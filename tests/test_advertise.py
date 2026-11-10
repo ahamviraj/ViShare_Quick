@@ -1,6 +1,11 @@
 import base64
 import unittest
-from vishare_quick.advertise import make_endpoint_info, make_instance_name, SERVICE_TYPE
+from vishare_quick.advertise import (
+    SERVICE_TYPE,
+    make_endpoint_info,
+    make_instance_name,
+    run_advertiser,
+)
 
 
 class TestAdvertise(unittest.TestCase):
@@ -25,6 +30,30 @@ class TestAdvertise(unittest.TestCase):
     def test_endpoint_info_rejects_empty_name(self):
         with self.assertRaises(ValueError):
             make_endpoint_info("")
+
+    def test_paired_key_response_requires_ukey2_handshake(self):
+        with self.assertRaisesRegex(ValueError, "requires --ukey2-handshake"):
+            run_advertiser(duration_seconds=1, paired_key_response=True)
+
+    def test_paired_key_response_is_mutually_exclusive(self):
+        with self.assertRaisesRegex(ValueError, "cannot be combined"):
+            run_advertiser(
+                duration_seconds=1,
+                ukey2_handshake=True,
+                paired_key_response=True,
+                paired_key_probe=True,
+            )
+        with self.assertRaisesRegex(ValueError, "cannot be combined"):
+            run_advertiser(
+                duration_seconds=1,
+                ukey2_handshake=True,
+                paired_key_response=True,
+                inspect_encrypted_frame=True,
+            )
+
+    def test_protocol_timeline_requires_ukey2_handshake(self):
+        with self.assertRaisesRegex(ValueError, "requires --ukey2-handshake"):
+            run_advertiser(duration_seconds=1, protocol_timeline=True)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-"""Command-line interface for ViShare_Quick alpha_0.2-dev."""
+"""Command-line interface for ViShare_Quick alpha_0.4-dev."""
 
 import argparse
 import sys
@@ -39,12 +39,72 @@ def build_parser() -> argparse.ArgumentParser:
         help="experimentally advertise this laptop as a Quick Share-style endpoint",
         description=(
             "Publish an experimental mDNS endpoint and listen for TCP connections. "
-            "The UKEY2 handshake, file transfer, and BLE trigger are not implemented."
+            "UKEY2 response is disabled unless --ukey2-handshake is selected; file transfer "
+            "and the BLE trigger are not implemented. The opt-in mode sends a plaintext Nearby "
+            "CONNECTION_RESPONSE exchange, then closes before encrypted traffic unless a separate "
+            "--inspect-encrypted-frame, --paired-key-probe, or --paired-key-response mode is selected."
         ),
     )
     advertise.add_argument("--name", default="ViShare Quick", help="visible device name")
     advertise.add_argument("--port", type=int, default=0, help="TCP port (0 chooses an available port)")
     advertise.add_argument("--seconds", type=float, default=120.0, help="advertisement duration (default: 120 seconds)")
+    mode_group = advertise.add_mutually_exclusive_group()
+    mode_group.add_argument(
+        "--inspect-frames", action="store_true", help="read and classify length-prefixed frames without replying"
+    )
+    advertise.add_argument(
+        "--inspect-encrypted-frame",
+        action="store_true",
+        help=(
+            "with --ukey2-handshake, authenticate and inspect one bounded post-accept "
+            "frame; never sends encrypted data"
+        ),
+    )
+    advertise.add_argument(
+        "--paired-key-probe",
+        action="store_true",
+        help=(
+            "with --ukey2-handshake, inspect one authenticated paired-key offer and at most "
+            "one follow-up; sends no paired-key message"
+        ),
+    )
+    advertise.add_argument(
+        "--paired-key-response",
+        action="store_true",
+        help=(
+            "with --ukey2-handshake, reply to the authenticated paired-key offer with an empty "
+            "PairedKeyEncryptionFrame and PairedKeyResultFrame UNABLE; experimental, no identity "
+            "material, no consent, no file transfer"
+        ),
+    )
+    advertise.add_argument(
+        "--protocol-timeline",
+        action="store_true",
+        help=(
+            "with --ukey2-handshake, print a sanitized chronological timeline of protocol "
+            "events (metadata only; never keys, payload bytes, or identity material)"
+        ),
+    )
+    mode_group.add_argument(
+        "--ukey2-handshake",
+        action="store_true",
+        help=(
+            "opt in to experimental P256_SHA512 UKEY2 and plaintext CONNECTION_RESPONSE; "
+            "no encrypted response or file transfer"
+        ),
+    )
+    dump_group = advertise.add_mutually_exclusive_group()
+    dump_group.add_argument(
+        "--dump-first-frame-hex",
+        action="store_true",
+        help="opt in to a maximum 96-byte hex dump of frame 1 (includes length prefix)",
+    )
+    dump_group.add_argument(
+        "--dump-frame-hex-index",
+        type=int,
+        metavar="N",
+        help="opt in to a maximum 96-byte hex dump of complete frame N (includes length prefix)",
+    )
     return parser
 
 
@@ -61,11 +121,70 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "advertise":
         if args.seconds <= 0 or args.seconds > 3600:
             parser.error("--seconds must be greater than 0 and at most 3600")
+        if args.dump_frame_hex_index is not None and args.dump_frame_hex_index < 1:
+            parser.error("--dump-frame-hex-index must be at least 1")
+        if args.inspect_encrypted_frame and not args.ukey2_handshake:
+            parser.error("--inspect-encrypted-frame requires --ukey2-handshake")
+        if args.paired_key_probe and not args.ukey2_handshake:
+            parser.error("--paired-key-probe requires --ukey2-handshake")
+        if args.paired_key_probe and args.inspect_encrypted_frame:
+            parser.error("--paired-key-probe cannot be combined with --inspect-encrypted-frame")
+        if args.paired_key_response and not args.ukey2_handshake:
+            parser.error("--paired-key-response requires --ukey2-handshake")
+        if args.paired_key_response and args.inspect_encrypted_frame:
+            parser.error("--paired-key-response cannot be combined with --inspect-encrypted-frame")
+        if args.paired_key_response and args.paired_key_probe:
+            parser.error("--paired-key-response cannot be combined with --paired-key-probe")
+        if args.protocol_timeline and not args.ukey2_handshake:
+            parser.error("--protocol-timeline requires --ukey2-handshake")
         try:
             from vishare_quick.advertise import run_advertiser
             print("Starting experimental Quick Share-style mDNS advertisement.")
-            print("This is not a complete Quick Share receiver; BLE trigger and UKEY2 handshake are not implemented.")
-            result = run_advertiser(args.name, args.port, args.seconds)
+            if args.ukey2_handshake:
+                if args.paired_key_probe:
+                    print(
+                        "WARNING: experimental UKEY2 mode sends SERVER_INIT and plaintext "
+                        "CONNECTION_RESPONSE ACCEPT. Paired-key probe authenticates one inbound "
+                        "offer and may read one follow-up; it sends no paired-key response, "
+                        "consent decision, or file data."
+                    )
+                elif args.paired_key_response:
+                    print(
+                        "WARNING: experimental no-credential paired-key response. After the "
+                        "authenticated Android offer this sends a PairedKeyEncryptionFrame with "
+                        "fresh random 72-byte signed_data and 6-byte secret_id_hash placeholders "
+                        "(no certificate, signature, or QR data) and a PairedKeyResultFrame UNABLE. "
+                        "It does not claim a verified identity, request consent, or transfer files. "
+                        "Android acceptance is unverified."
+                    )
+                elif args.inspect_encrypted_frame:
+                    print(
+                        "WARNING: experimental UKEY2 mode sends SERVER_INIT and plaintext "
+                        "CONNECTION_RESPONSE ACCEPT. It then reads at most one encrypted frame "
+                        "and attempts authenticated inspection without sending an encrypted "
+                        "response; pairing, consent, and file transfer are not implemented."
+                    )
+                else:
+                    print(
+                        "WARNING: UKEY2 handshake mode sends a protocol response. It is experimental; "
+                        "it accepts the connection after UKEY2 and closes before encrypted messaging; "
+                        "peer authentication and file transfer are not implemented."
+                    )
+            else:
+                print("This is not a complete Quick Share receiver; BLE trigger and file transfer are not implemented.")
+            result = run_advertiser(
+                args.name,
+                args.port,
+                args.seconds,
+                inspect_frames=args.inspect_frames or args.dump_first_frame_hex or args.dump_frame_hex_index is not None,
+                dump_first_frame_hex=args.dump_first_frame_hex,
+                dump_frame_hex_index=args.dump_frame_hex_index,
+                ukey2_handshake=args.ukey2_handshake,
+                inspect_encrypted_frame=args.inspect_encrypted_frame,
+                paired_key_probe=args.paired_key_probe,
+                paired_key_response=args.paired_key_response,
+                protocol_timeline=args.protocol_timeline,
+            )
         except (RuntimeError, ValueError, OSError) as exc:
             print(f"Advertisement failed: {exc}", file=sys.stderr)
             return 2
