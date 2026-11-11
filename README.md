@@ -3,6 +3,16 @@
 **Package:** `alpha_0.4` (research build)\
 **Target:** Windows / Linux · Python 3.10+
 
+## Download
+
+Prebuilt single-file executables are attached to the release:
+
+- Windows x64: `vishare-quick.exe`
+- Linux x64: `vishare-quick`
+
+Both are self-contained PyInstaller builds of the same CLI and use the same explicit PIN
+confirmation and consent prompts. Check the build with `vishare-quick --version`.
+
 This build advances the experimental Alpha 0.3 mDNS advertiser with a read-only TCP frame
 inspector and a separate, opt-in UKEY2 plus plaintext Nearby connection-response experiment. It reads four-byte big-endian
 length-prefixed frames, enforces a 1 MiB limit,
