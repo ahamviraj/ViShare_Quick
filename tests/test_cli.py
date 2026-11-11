@@ -10,12 +10,12 @@ from vishare_quick.diagnostics import run_diagnostics
 
 class TestViShareQuickCLI(unittest.TestCase):
     def test_version(self):
-        self.assertEqual(__version__, "alpha_0.4-dev")
+        self.assertEqual(__version__, "alpha_0.4")
 
     def test_diagnostics_include_required_fields(self):
         diagnostics = dict(run_diagnostics())
         self.assertEqual(diagnostics["Application"], "ViShare_Quick")
-        self.assertEqual(diagnostics["Version"], "alpha_0.4-dev")
+        self.assertEqual(diagnostics["Version"], "alpha_0.4")
         self.assertIn("Python version", diagnostics)
         self.assertIn("OS family", diagnostics)
 

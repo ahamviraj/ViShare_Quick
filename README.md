@@ -1,6 +1,6 @@
 # ViShare_Quick
 
-**Package:** `alpha_0.4-dev` (research build)\
+**Package:** `alpha_0.4` (research build)\
 **Target:** Windows / Linux · Python 3.10+
 
 This build advances the experimental Alpha 0.3 mDNS advertiser with a read-only TCP frame
@@ -163,5 +163,5 @@ The encrypted-frame diagnostic and its limitations are described in
 - Future milestone: verify multi-file and text-only shares across more devices and display formats
 - Later milestone: implement and validate sending
 
-No release tag or Alpha 0.4 release has been created. File reception has been demonstrated on one
-trusted local network; it is not a claim of peer identity verification or broad interoperability.
+Released as `alpha_0.4`. File reception has been demonstrated on one trusted local network; it is
+not a claim of peer identity verification or broad interoperability.
