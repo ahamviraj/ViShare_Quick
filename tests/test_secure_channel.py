@@ -106,11 +106,54 @@ def _offline_frame_with_explicit_schema_chunk(chunk: bytes) -> bytes:
     offline_wire_formats.proto and do not use synthetic_frame's chunk builder.
     """
     # PayloadHeader: id=1, type=2 (BYTES), total_size=3.
-    sharing = bytes.fromhex("08 01 12 06 08 03 22 02 0a 00")
     header = bytes.fromhex("08 07 10 01 18 0a")
     transfer = bytes.fromhex("08 01") + blob(2, header) + blob(3, chunk)
     offline_v1 = bytes.fromhex("08 03") + blob(4, transfer)
     return bytes.fromhex("08 01") + blob(2, offline_v1)
+
+
+def _offline_bytes_frame(sharing: bytes, *, payload_id: int = 7) -> bytes:
+    """Wrap a sharing Frame in a BYTES DATA PayloadTransferFrame."""
+    header = vint(1, payload_id) + vint(2, 1) + vint(3, len(sharing))
+    chunk = vint(2, 0) + blob(3, sharing)
+    transfer = vint(1, 1) + blob(2, header) + blob(3, chunk)
+    return vint(1, 1) + blob(2, vint(1, 3) + blob(4, transfer))
+
+
+class SharingEnvelopeFieldNumberTests(unittest.TestCase):
+    """Field numbers from Google's published ``sharing.proto``.
+
+    The V1Frame body field is not uniformly ``type + 1``: ``progress_update``
+    is field 7 while its type is also 7, and CANCEL has no body field. An
+    Android XPad sender emits exactly the progress_update form right after the
+    receiver's ACCEPT, so a wrong mapping stalls the transfer.
+    """
+
+    def test_progress_update_body_is_field_seven(self):
+        sharing = vint(1, 1) + blob(2, vint(1, 7) + blob(7, vint(2, 1)))
+        result = _parse_offline_frame(_offline_bytes_frame(sharing))
+        self.assertEqual(result.offline_type, "PAYLOAD_TRANSFER")
+        self.assertEqual(result.sharing_type, "PROGRESS_UPDATE")
+
+    def test_progress_update_body_in_field_eight_is_rejected(self):
+        sharing = vint(1, 1) + blob(2, vint(1, 7) + blob(8, vint(2, 1)))
+        with self.assertRaisesRegex(SecureChannelError, "sharing Frame body"):
+            _parse_offline_frame(_offline_bytes_frame(sharing))
+
+    def test_cancel_type_alone_is_recognized(self):
+        sharing = vint(1, 1) + blob(2, vint(1, 6))
+        result = _parse_offline_frame(_offline_bytes_frame(sharing))
+        self.assertEqual(result.sharing_type, "CANCEL")
+
+    def test_cancel_with_a_body_field_is_rejected(self):
+        sharing = vint(1, 1) + blob(2, vint(1, 6) + blob(7, b""))
+        with self.assertRaisesRegex(SecureChannelError, "CANCEL"):
+            _parse_offline_frame(_offline_bytes_frame(sharing))
+
+    def test_bindings_body_is_field_eight(self):
+        sharing = vint(1, 1) + blob(2, vint(1, 8) + blob(8, vint(1, 1)))
+        result = _parse_offline_frame(_offline_bytes_frame(sharing))
+        self.assertEqual(result.sharing_type, "BINDINGS")
 
 
 class SecureChannelSyntheticTests(unittest.TestCase):

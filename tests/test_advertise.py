@@ -1,9 +1,12 @@
 import base64
 import unittest
 from vishare_quick.advertise import (
+    PROGRESS_MIN_STEP_BYTES,
     SERVICE_TYPE,
+    _human_byte_rate,
     make_endpoint_info,
     make_instance_name,
+    make_progress_reporter,
     run_advertiser,
 )
 
@@ -54,6 +57,95 @@ class TestAdvertise(unittest.TestCase):
     def test_protocol_timeline_requires_ukey2_handshake(self):
         with self.assertRaisesRegex(ValueError, "requires --ukey2-handshake"):
             run_advertiser(duration_seconds=1, protocol_timeline=True)
+
+    def test_introduction_diagnostics_require_paired_key_response(self):
+        with self.assertRaisesRegex(ValueError, "require --paired-key-response"):
+            run_advertiser(
+                duration_seconds=1,
+                ukey2_handshake=True,
+                capture_introduction=True,
+            )
+        with self.assertRaisesRegex(ValueError, "require --paired-key-response"):
+            run_advertiser(
+                duration_seconds=1,
+                ukey2_handshake=True,
+                log_introduction_filenames=True,
+            )
+
+    def test_capture_directory_requires_capture_flag(self):
+        with self.assertRaisesRegex(ValueError, "requires --capture-introduction"):
+            run_advertiser(
+                duration_seconds=1,
+                ukey2_handshake=True,
+                paired_key_response=True,
+                capture_introduction_dir="C:\\Temp\\captures",
+            )
+
+    def test_capture_directory_rejects_parent_traversal(self):
+        with self.assertRaisesRegex(ValueError, "must not contain"):
+            run_advertiser(
+                duration_seconds=1,
+                ukey2_handshake=True,
+                paired_key_response=True,
+                capture_introduction=True,
+                capture_introduction_dir="captures\\..\\escape",
+            )
+
+
+class ProgressReporterTests(unittest.TestCase):
+    def _reporter(self):
+        lines: list[str] = []
+        now = [0.0]
+        report = make_progress_reporter(
+            printer=lines.append, clock=lambda: now[0]
+        )
+        return report, lines, now
+
+    def test_small_file_reports_only_completion(self):
+        report, lines, _ = self._reporter()
+        report(7, 55, 55)
+        self.assertEqual(len(lines), 1)
+        self.assertIn("55/55 bytes", lines[0])
+        self.assertNotIn("7", lines[0])  # payload ID is never rendered
+
+    def test_progress_is_throttled_for_a_multi_gigabyte_file(self):
+        report, lines, now = self._reporter()
+        total = 2_251_000_000
+        chunk = 524_288
+        payload_id = -(1 << 62) - 99
+        received = 0
+        while received < total:
+            now[0] += 0.1
+            received = min(received + chunk, total)
+            report(payload_id, received, total)
+
+        # 20ish updates plus completion, not one per 512 KiB chunk (~4300).
+        self.assertLessEqual(len(lines), 25)
+        self.assertIn("File transfer complete", lines[-1])
+        self.assertIn("MiB/s", lines[-1])
+        for line in lines:
+            self.assertNotIn(str(payload_id), line)
+            self.assertNotIn(str(abs(payload_id)), line)
+
+    def test_completion_is_reported_once(self):
+        report, lines, _ = self._reporter()
+        report(1, 100, 100)
+        report(1, 100, 100)
+        self.assertEqual(sum("complete" in line for line in lines), 1)
+
+    def test_minimum_step_applies_to_moderate_files(self):
+        report, lines, _ = self._reporter()
+        total = 3 * PROGRESS_MIN_STEP_BYTES
+        report(1, 1024, total)
+        self.assertEqual(lines, [])
+        report(1, PROGRESS_MIN_STEP_BYTES, total)
+        self.assertEqual(len(lines), 1)
+        self.assertIn("%", lines[0])
+
+    def test_byte_rate_formatting(self):
+        self.assertEqual(_human_byte_rate(0), "0.0 B/s")
+        self.assertEqual(_human_byte_rate(2048), "2.0 KiB/s")
+        self.assertEqual(_human_byte_rate(3 * 1024 * 1024), "3.0 MiB/s")
 
 
 if __name__ == "__main__":

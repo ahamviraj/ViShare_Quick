@@ -28,6 +28,7 @@ from vishare_quick.paired_key_response import (
     build_paired_key_result_frame,
     run_paired_key_response,
 )
+from vishare_quick.introduction_diagnostics import observe_inbound
 from vishare_quick.protocol import Frame, FrameTimeout, PeerDisconnected
 from vishare_quick.protocol_timeline import ProtocolTimeline
 from vishare_quick.secure_channel import (
@@ -72,6 +73,16 @@ def _pke_sharing() -> bytes:
 
 def _result_sharing(status: int) -> bytes:
     return vint(1, 1) + blob(2, vint(1, 4) + blob(5, vint(1, status)))
+
+
+def _response_sharing(status: int, *, attachment_type: int | None = None) -> bytes:
+    # Sharing Frame -> V1Frame type=RESPONSE(2), body field 3.
+    body = vint(1, status)
+    if attachment_type is not None:
+        # map<int64, AttachmentDetails>: key=0, value.type=<enum>.
+        entry = vint(1, 0) + blob(2, vint(1, attachment_type))
+        body += blob(2, entry)
+    return vint(1, 1) + blob(2, vint(1, 2) + blob(3, body))
 
 
 def _keep_alive_offline() -> bytes:
@@ -522,6 +533,142 @@ class PairedKeyResponseStageTests(unittest.TestCase):
                 ScriptedReader(frames), writer, self.receive_keys, self.send_keys
             )
         self.assertEqual(len(_split_frames(bytes(writer.buffer))), 4)
+
+    def test_response_in_place_of_introduction_is_alternate_state(self):
+        frames = _inbound_exchange(states=(PAIRED_KEY_RESULT_UNABLE,))
+        frames.append(
+            _client_frame(
+                _wrap_transfer(
+                    _response_sharing(1, attachment_type=1), 9, terminator=False
+                ),
+                5,
+            )
+        )
+        writer = CollectingWriter()
+        result = run_paired_key_response(
+            ScriptedReader(frames),
+            writer,
+            self.receive_keys,
+            self.send_keys,
+            read_introduction=True,
+        )
+        self.assertEqual(result.status, "response-before-introduction")
+        self.assertIsNone(result.introduction)
+        self.assertIsNotNone(result.peer_response)
+        self.assertEqual(result.peer_response.sequence, 5)
+        self.assertEqual(result.peer_response.sharing_type, "RESPONSE")
+        response = result.peer_response.connection_response
+        self.assertEqual(response.status, 1)
+        self.assertEqual(response.attachment_details_count, 1)
+        self.assertEqual(result.next_inbound_sequence, 6)
+        # The classification must not add any wire reply.
+        self.assertEqual(len(_split_frames(bytes(writer.buffer))), 4)
+
+    def test_response_in_place_of_introduction_then_observation_is_read_only(self):
+        sharing = _response_sharing(1)
+        frames = _inbound_exchange(states=(PAIRED_KEY_RESULT_UNABLE,))
+        frames.append(
+            _client_frame(_wrap_transfer(sharing, 9, terminator=False), 5)
+        )
+        frames.append(
+            _client_frame(_wrap_transfer(sharing, 9, terminator=True), 6)
+        )
+        frames.append(_client_frame(_keep_alive_offline(), 7))
+        reader = ScriptedReader(frames, timeout_after=True)
+        writer = CollectingWriter()
+        result = run_paired_key_response(
+            reader,
+            writer,
+            self.receive_keys,
+            self.send_keys,
+            read_introduction=True,
+        )
+        before = bytes(writer.buffer)
+        lines: list[str] = []
+        observation = observe_inbound(
+            reader,
+            self.receive_keys,
+            result.next_inbound_sequence,
+            printer=lines.append,
+            stage="post-response observation",
+            frame_label="Post-response frame",
+        )
+        self.assertEqual(observation.status, "timeout")
+        self.assertEqual(observation.frames_observed, 2)
+        self.assertEqual(bytes(writer.buffer), before)
+        rendered = "\n".join(lines)
+        self.assertIn("Post-response frame 1", rendered)
+        self.assertIn("Post-response frame 2", rendered)
+        # No consent, transfer, or keep-alive acknowledgement was sent.
+        self.assertEqual(len(_split_frames(bytes(writer.buffer))), 4)
+
+    def test_malformed_response_in_introduction_slot_is_rejected(self):
+        malformed = vint(1, 1) + blob(2, vint(1, 2) + blob(3, blob(1, b"x")))
+        frames = _inbound_exchange(states=(PAIRED_KEY_RESULT_UNABLE,))
+        frames.append(
+            _client_frame(_wrap_transfer(malformed, 9, terminator=False), 5)
+        )
+        writer = CollectingWriter()
+        with self.assertRaisesRegex(SecureChannelError, "wire type"):
+            run_paired_key_response(
+                ScriptedReader(frames),
+                writer,
+                self.receive_keys,
+                self.send_keys,
+                read_introduction=True,
+            )
+        self.assertEqual(len(_split_frames(bytes(writer.buffer))), 4)
+
+    def test_other_sharing_type_in_introduction_slot_still_errors(self):
+        # Published CANCEL frames carry the type only; they have no body field.
+        cancel = vint(1, 1) + blob(2, vint(1, 6))
+        frames = _inbound_exchange(states=(PAIRED_KEY_RESULT_UNABLE,))
+        frames.append(
+            _client_frame(_wrap_transfer(cancel, 9, terminator=False), 5)
+        )
+        writer = CollectingWriter()
+        with self.assertRaisesRegex(
+            PairedKeyMessageError, "Expected authenticated INTRODUCTION"
+        ):
+            run_paired_key_response(
+                ScriptedReader(frames),
+                writer,
+                self.receive_keys,
+                self.send_keys,
+                read_introduction=True,
+            )
+        self.assertEqual(len(_split_frames(bytes(writer.buffer))), 4)
+
+    def test_response_before_introduction_is_recorded_without_values(self):
+        lines: list[str] = []
+        timeline = ProtocolTimeline(printer=lines.append, clock=lambda: 0.0)
+        frames = _inbound_exchange(states=(PAIRED_KEY_RESULT_UNABLE,))
+        frames.append(
+            _client_frame(
+                _wrap_transfer(
+                    _response_sharing(1, attachment_type=1), 9, terminator=False
+                ),
+                5,
+            )
+        )
+        writer = CollectingWriter()
+        result = run_paired_key_response(
+            ScriptedReader(frames),
+            writer,
+            self.receive_keys,
+            self.send_keys,
+            read_introduction=True,
+            timeline=timeline,
+        )
+        self.assertEqual(result.status, "response-before-introduction")
+        rendered = "\n".join(lines)
+        self.assertIn("sharing=RESPONSE", rendered)
+        self.assertIn("response_status=ACCEPT", rendered)
+        self.assertIn("attachment_details=1", rendered)
+        self.assertIn("stream_metadata=0", rendered)
+        self.assertIn("STATE RESPONSE_BEFORE_INTRODUCTION", rendered)
+        # Only counts are rendered; the map key (attachment hash) never is.
+        self.assertNotIn("attachment_hash", rendered)
 
     def test_disconnection_while_waiting_is_not_reported_as_result(self):
         frames = _inbound_exchange()[:2]

@@ -1,7 +1,9 @@
 """Experimental Quick Share-compatible mDNS endpoint advertisement.
 
-This module implements the documented DNS-SD advertisement shape and an opt-in experimental
-P256_SHA512 UKEY2 responder. It does not implement file transfer or BLE trigger advertisement.
+This module implements the documented DNS-SD advertisement shape, an opt-in
+experimental P256_SHA512 UKEY2 responder, and opt-in staged receiver flows.
+File transfer is reachable only through the explicit ``--receive-files``
+opt-in and requires an interactive PIN comparison and consent decision.
 """
 from __future__ import annotations
 
@@ -10,9 +12,9 @@ import os
 import secrets
 import socket
 import string
-import threading
 import time
-from typing import Any
+from pathlib import Path
+from typing import Any, Callable
 from vishare_quick.protocol import (
     ConnectionResponseExchange,
     FrameError,
@@ -21,6 +23,15 @@ from vishare_quick.protocol import (
     TruncatedFrame,
     make_frame_hex_dump_callback,
     read_frame,
+)
+from vishare_quick.consent import ConsolePrompter, Prompter
+from vishare_quick.file_transfer import FileTransferError
+from vishare_quick.introduction import IntroductionError
+from vishare_quick.introduction_diagnostics import (
+    OBSERVATION_WINDOW_SECONDS,
+    handle_authenticated_introduction,
+    observe_inbound,
+    resolve_capture_directory,
 )
 from vishare_quick.secure_channel import (
     SecureChannelError,
@@ -34,6 +45,11 @@ from vishare_quick.paired_key_response import (
     run_paired_key_response,
 )
 from vishare_quick.protocol_timeline import ProtocolTimeline
+from vishare_quick.sharing_response import describe_connection_response
+from vishare_quick.sharing_session import (
+    SharingSessionError,
+    run_receive_session,
+)
 from vishare_quick.ukey2 import HandshakeError, Ukey2ServerHandshake
 
 
@@ -56,6 +72,111 @@ def _describe_authenticated_payload(summary) -> str:
         f"total_size={meta.total_size}; offset={meta.chunk_offset}; "
         f"body={meta.chunk_body_length} bytes; last_chunk={meta.is_last_chunk}"
     )
+
+
+def _observe_read_only_after(
+    conn,
+    receive_keys,
+    start_sequence: int,
+    *,
+    timeline,
+    stage: str,
+    frame_label: str,
+    state_name: str,
+    summary_label: str,
+) -> str:
+    """Watch an authenticated connection briefly without writing anything."""
+    observation_deadline = time.monotonic() + OBSERVATION_WINDOW_SECONDS
+
+    class ObservationReader:
+        def recv(self, size):
+            remaining = observation_deadline - time.monotonic()
+            if remaining <= 0:
+                raise socket.timeout()
+            conn.settimeout(remaining)
+            return conn.recv(size)
+
+    observation = observe_inbound(
+        ObservationReader(),
+        receive_keys,
+        start_sequence,
+        timeline=timeline,
+        stage=stage,
+        frame_label=frame_label,
+    )
+    if timeline is not None:
+        timeline.event(
+            "STATE",
+            state_name,
+            status=observation.status,
+            frames=observation.frames_observed,
+        )
+    print(
+        f"{summary_label}: {observation.status}; "
+        f"frames={observation.frames_observed}; "
+        "no PIN, consent, or transfer message was sent."
+    )
+    return observation.status
+
+
+PROGRESS_MIN_STEP_BYTES = 8 * 1024 * 1024
+PROGRESS_STEP_FRACTION = 20
+
+
+def _human_byte_rate(bytes_per_second: float) -> str:
+    units = ("B/s", "KiB/s", "MiB/s", "GiB/s")
+    value = max(bytes_per_second, 0.0)
+    for unit in units:
+        if value < 1024.0 or unit == units[-1]:
+            return f"{value:.1f} {unit}"
+        value /= 1024.0
+    return "0.0 B/s"
+
+
+def make_progress_reporter(
+    printer: Callable[[str], None] = print,
+    clock: Callable[[], float] = time.monotonic,
+):
+    """Build a throttled, non-identifying progress reporter.
+
+    A 2 GiB file arrives in 512 KiB chunks. Printing every chunk (or every MiB)
+    makes a multi-gigabyte run unreadable and slow, so updates are limited to
+    about twenty per payload with an 8 MiB floor, plus one completion line. The
+    peer's payload ID is deliberately not printed.
+    """
+    first_at: float | None = None
+    last_reported = 0
+    finished = False
+
+    def report(payload_id: int, received: int, total: int) -> None:
+        del payload_id  # Never render a peer-supplied identifier.
+        nonlocal first_at, last_reported, finished
+        if finished:
+            return
+        if first_at is None:
+            first_at = clock()
+        total = max(total, 1)
+        if received < total:
+            step = max(PROGRESS_MIN_STEP_BYTES, total // PROGRESS_STEP_FRACTION)
+            if received - last_reported < step:
+                return
+            last_reported = received
+            printer(
+                f"Receiving file: {received}/{total} bytes "
+                f"({received * 100 // total}%)."
+            )
+            return
+        finished = True
+        elapsed = max(clock() - (first_at or 0.0), 0.0)
+        if elapsed >= 0.05:
+            printer(
+                f"File transfer complete: {received}/{total} bytes in "
+                f"{elapsed:.1f}s ({_human_byte_rate(received / elapsed)})."
+            )
+        else:
+            printer(f"File transfer complete: {received}/{total} bytes.")
+
+    return report
 
 
 def make_instance_name() -> tuple[str, str]:
@@ -104,6 +225,12 @@ def run_advertiser(
     paired_key_probe: bool = False,
     paired_key_response: bool = False,
     protocol_timeline: bool = False,
+    receive_files: bool = False,
+    download_dir: str | None = None,
+    prompter: Prompter | None = None,
+    capture_introduction: bool = False,
+    capture_introduction_dir: str | None = None,
+    log_introduction_filenames: bool = False,
 ) -> dict[str, Any]:
     """Advertise an endpoint; inspection is read-only, UKEY2 response is opt-in."""
     try:
@@ -134,8 +261,36 @@ def run_advertiser(
         raise ValueError("Paired-key response cannot be combined with --inspect-encrypted-frame.")
     if paired_key_response and paired_key_probe:
         raise ValueError("Paired-key response cannot be combined with --paired-key-probe.")
+    if receive_files and not ukey2_handshake:
+        raise ValueError("File reception requires --ukey2-handshake.")
+    if receive_files and inspect_encrypted_frame:
+        raise ValueError("File reception cannot be combined with --inspect-encrypted-frame.")
+    if receive_files and paired_key_probe:
+        raise ValueError("File reception cannot be combined with --paired-key-probe.")
     if protocol_timeline and not ukey2_handshake:
         raise ValueError("Protocol timeline requires --ukey2-handshake.")
+
+    # File reception continues the already-verified paired-key response stage.
+    paired_key_response = paired_key_response or receive_files
+    if (capture_introduction or log_introduction_filenames) and not paired_key_response:
+        raise ValueError(
+            "Introduction diagnostics require --paired-key-response or --receive-files."
+        )
+    if capture_introduction_dir is not None and not capture_introduction:
+        raise ValueError(
+            "An Introduction capture directory requires --capture-introduction."
+        )
+    resolved_capture_directory = None
+    if capture_introduction:
+        resolved_capture_directory = resolve_capture_directory(
+            capture_introduction_dir
+        )
+    download_path = Path(download_dir).expanduser() if download_dir else (
+        Path.home() / "Downloads"
+    )
+    if download_path.exists() and not download_path.is_dir():
+        raise ValueError("Download path exists and is not a directory.")
+    active_prompter: Prompter = prompter or ConsolePrompter()
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -240,8 +395,7 @@ def run_advertiser(
                                 print(
                                     "UKEY2 CLIENT_FINISH commitment verified; P-256 ECDH and HKDF completed "
                                     f"(auth={len(secrets.auth_string)} bytes, next-secret={len(secrets.next_secret)} bytes; "
-                                    "values omitted). Out-of-band peer authentication is not confirmed; "
-                                    "no subsequent protocol or file transfer is implemented."
+                                    "values omitted). Out-of-band peer authentication is not confirmed."
                                 )
                                 if connection_timeline is not None:
                                     connection_timeline.state("UKEY2_AUTHENTICATED")
@@ -254,8 +408,7 @@ def run_advertiser(
                                 conn.settimeout(remaining)
                                 conn.sendall(response_wire)
                                 print(
-                                    "Sent Nearby CONNECTION_RESPONSE ACCEPT (plaintext; "
-                                    "encrypted messaging and file transfer are not implemented)."
+                                    "Sent Nearby CONNECTION_RESPONSE ACCEPT (plaintext)."
                                 )
                                 if connection_timeline is not None:
                                     connection_timeline.outbound_plaintext(
@@ -458,16 +611,132 @@ def run_advertiser(
                                             + "."
                                         )
                                         if paired.introduction is None:
-                                            print(
-                                                "No Introduction observed within the response stage; "
-                                                "no consent response or file transfer is implemented."
-                                            )
+                                            if paired.peer_response is not None:
+                                                response = (
+                                                    paired.peer_response.connection_response
+                                                )
+                                                print(
+                                                    "Authenticated RESPONSE observed before "
+                                                    "any Introduction: "
+                                                    + describe_connection_response(response)
+                                                    + "."
+                                                )
+                                                print(
+                                                    "That response is not consent; no response, "
+                                                    "PIN, or file transfer was sent. Continuing "
+                                                    "read-only observation."
+                                                )
+                                                observed_status = _observe_read_only_after(
+                                                    conn,
+                                                    receive_keys,
+                                                    paired.next_inbound_sequence,
+                                                    timeline=connection_timeline,
+                                                    stage="post-response observation",
+                                                    frame_label="Post-response frame",
+                                                    state_name="RESPONSE_OBSERVATION_ENDED",
+                                                    summary_label=(
+                                                        "Post-response observation ended"
+                                                    ),
+                                                )
+                                                close_reason = (
+                                                    "response-observed-"
+                                                    f"{observed_status}"
+                                                )
+                                            else:
+                                                print(
+                                                    "No Introduction observed within the response stage; "
+                                                    "no consent response or file transfer is possible."
+                                                )
                                         else:
                                             print(
                                                 "Authenticated Introduction observed: "
                                                 + _describe_authenticated_payload(paired.introduction)
-                                                + "; no consent response or file transfer is implemented; closing."
+                                                + "."
                                             )
+                                            diagnostics = handle_authenticated_introduction(
+                                                paired.introduction,
+                                                timeline=connection_timeline,
+                                                capture_directory=resolved_capture_directory,
+                                                log_filenames=log_introduction_filenames,
+                                            )
+                                            if not diagnostics.parsed:
+                                                print(
+                                                    "Introduction parsing failed; closing without "
+                                                    "sending a PIN entry, consent response, or file transfer."
+                                                )
+                                                close_reason = "introduction-parse-failed"
+                                            elif not receive_files:
+                                                # Parsing succeeded but no consent stage exists in
+                                                # this mode. Keep the authenticated connection open
+                                                # for a short read-only diagnostic window and send
+                                                # nothing: no PIN, consent, keep-alive, or transfer.
+                                                observed_status = _observe_read_only_after(
+                                                    conn,
+                                                    receive_keys,
+                                                    paired.next_inbound_sequence,
+                                                    timeline=connection_timeline,
+                                                    stage="post-Introduction observation",
+                                                    frame_label="Post-Introduction frame",
+                                                    state_name="INTRODUCTION_OBSERVATION_ENDED",
+                                                    summary_label=(
+                                                        "Post-Introduction observation ended"
+                                                    ),
+                                                )
+                                                close_reason = (
+                                                    "introduction-observed-"
+                                                    f"{observed_status}"
+                                                )
+                                            else:
+                                                conn.settimeout(30.0)
+                                                report_progress = make_progress_reporter()
+
+                                                try:
+                                                    session = run_receive_session(
+                                                        conn,
+                                                        conn,
+                                                        receive_keys,
+                                                        send_keys,
+                                                        secrets.auth_string,
+                                                        introduction_summary=paired.introduction,
+                                                        parsed_introduction=diagnostics.introduction,
+                                                        next_inbound_sequence=paired.next_inbound_sequence,
+                                                        next_outbound_sequence=paired.next_outbound_sequence,
+                                                        download_dir=download_path,
+                                                        prompter=active_prompter,
+                                                        timeline=connection_timeline,
+                                                        progress=report_progress,
+                                                    )
+                                                except (
+                                                    IntroductionError,
+                                                    FileTransferError,
+                                                    SharingSessionError,
+                                                    FrameError,
+                                                    SecureChannelError,
+                                                    OSError,
+                                                ) as exc:
+                                                    close_reason = (
+                                                        connection_timeline.error(
+                                                            exc, stage="sharing session"
+                                                        )
+                                                        if connection_timeline is not None
+                                                        else "error"
+                                                    )
+                                                    print(f"Sharing session stopped: {exc}")
+                                                else:
+                                                    print(
+                                                        f"Sharing session status: {session.status}; "
+                                                        f"PIN verified={session.pin_verified}; "
+                                                        f"consent={session.consent}."
+                                                    )
+                                                    for received_file in session.files:
+                                                        print(
+                                                            f"Received {received_file.name}: "
+                                                            f"{received_file.size} bytes; "
+                                                            f"saved to {received_file.path}; "
+                                                            f"sha256={received_file.sha256}; "
+                                                            f"integrity={received_file.integrity}."
+                                                        )
+                                                    close_reason = session.status
                             except (HandshakeError, FrameError, socket.timeout, OSError) as exc:
                                 close_reason = (
                                     connection_timeline.error(

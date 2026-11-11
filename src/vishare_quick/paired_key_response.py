@@ -80,6 +80,11 @@ _VALID_RESULT_STATUSES = (
 _PKE_PAYLOAD_ID = 1
 _PKR_PAYLOAD_ID = 2
 
+# Outbound payload IDs already consumed by this stage. A later outbound payload
+# in the same connection (for example the sharing RESPONSE) must pick a fresh
+# ID rather than reusing one Android has already acknowledged.
+PAIRED_KEY_OUTBOUND_PAYLOAD_IDS = frozenset({_PKE_PAYLOAD_ID, _PKR_PAYLOAD_ID})
+
 # Google's documented no-credential fallback sizes. These are fresh random
 # placeholder bytes, not a signature or a certificate-derived hash, and the
 # local result remains UNABLE.
@@ -161,6 +166,14 @@ class PairedKeyResponseResult:
     peer_result_terminator: AuthenticatedFrameSummary
     introduction: AuthenticatedFrameSummary | None
     status: str
+    # A peer RESPONSE can arrive in the optional Introduction slot. It is a
+    # distinct observed state, not an error and not consent.
+    peer_response: AuthenticatedFrameSummary | None = None
+    # Transport-wide counters after this stage. A continuation must reuse them
+    # rather than restarting at 1; the peer validates a single monotonic
+    # sequence per direction.
+    next_inbound_sequence: int = 1
+    next_outbound_sequence: int = 1
 
 
 def build_paired_key_encryption_frame() -> bytes:
@@ -190,16 +203,24 @@ def build_paired_key_result_frame(status: int = PAIRED_KEY_RESULT_UNABLE) -> byt
     return _encode_varint_field(1, 1) + _encode_bytes_field(2, v1)
 
 
-def build_keep_alive_ack_frame() -> bytes:
-    """Build a KEEP_ALIVE OfflineFrame acknowledging the peer's keep-alive.
+def build_keep_alive_frame(*, ack: bool = False) -> bytes:
+    """Build a KEEP_ALIVE OfflineFrame.
 
     ``V1Frame.type`` 5 is KEEP_ALIVE and its body field is 6; the
-    ``KeepAliveFrame.ack`` flag is field 1. Google's schema documents that an
-    ack is sent after receiving a KEEP_ALIVE, and all reviewed receivers do so.
+    ``KeepAliveFrame.ack`` flag is field 1. A receiver answers a peer's
+    keep-alive with ``ack=True``. Both directions also send unsolicited
+    ``ack=False`` keep-alives on an idle connection, as Google's sender and all
+    reviewed clients do, so that the peer's idle timer does not expire while a
+    human is deciding or while data is being flushed.
     """
-    keep_alive = _encode_varint_field(1, 1)
+    keep_alive = _encode_varint_field(1, 1 if ack else 0)
     v1 = _encode_varint_field(1, 5) + _encode_bytes_field(6, keep_alive)
     return _encode_varint_field(1, 1) + _encode_bytes_field(2, v1)
+
+
+def build_keep_alive_ack_frame() -> bytes:
+    """Build a KEEP_ALIVE OfflineFrame acknowledging the peer's keep-alive."""
+    return build_keep_alive_frame(ack=True)
 
 
 def _wrap_payload_transfer(header: bytes, chunk: bytes) -> bytes:
@@ -362,6 +383,27 @@ class PairedKeyResponseState:
                 f"received {_describe_summary(summary)}."
             )
         _require_complete_bytes(summary, "introduction")
+        self.state = "complete"
+
+    def accept_response_without_introduction(
+        self, summary: AuthenticatedFrameSummary
+    ) -> None:
+        """Record a peer RESPONSE that arrived instead of an Introduction.
+
+        Android has been observed emitting its scripted sharing RESPONSE after
+        the paired-key result even when it does not send an Introduction. The
+        response is a legitimate authenticated message, so it is classified as
+        a distinct terminal state rather than an ``unexpected-message-type``
+        error. It is never treated as consent: no transfer or response follows.
+        """
+        if self.state != "awaiting-introduction":
+            raise PairedKeyStateError("Peer response arrived in an invalid state.")
+        if summary.sharing_type != "RESPONSE":
+            raise PairedKeyMessageError(
+                "Expected authenticated INTRODUCTION or RESPONSE; "
+                f"received {_describe_summary(summary)}."
+            )
+        _require_complete_bytes(summary, "peer response")
         self.state = "complete"
 
     def finish_without_introduction(self, status: str) -> None:
@@ -539,10 +581,11 @@ def run_paired_key_response(
         timeline.state("PEER_PAIRED_KEY_RESULT_TERMINATED")
 
     introduction: AuthenticatedFrameSummary | None = None
+    peer_response: AuthenticatedFrameSummary | None = None
     status = "peer-paired-key-result-received"
     if read_introduction:
         try:
-            introduction = read_application("optional Introduction")
+            candidate = read_application("optional Introduction")
         except FrameTimeout:
             state.finish_without_introduction("introduction-timeout")
             status = "introduction-timeout"
@@ -554,10 +597,21 @@ def run_paired_key_response(
             if timeline is not None:
                 timeline.state("INTRODUCTION_DISCONNECT")
         else:
-            state.accept_introduction(introduction)
-            status = "introduction-received"
-            if timeline is not None:
-                timeline.state("INTRODUCTION_RECEIVED")
+            if candidate.sharing_type == "INTRODUCTION":
+                state.accept_introduction(candidate)
+                introduction = candidate
+                status = "introduction-received"
+                if timeline is not None:
+                    timeline.state("INTRODUCTION_RECEIVED")
+            elif candidate.sharing_type == "RESPONSE":
+                state.accept_response_without_introduction(candidate)
+                peer_response = candidate
+                status = "response-before-introduction"
+                if timeline is not None:
+                    timeline.state("RESPONSE_BEFORE_INTRODUCTION")
+            else:
+                # Preserve the existing strict error for every other type.
+                state.accept_introduction(candidate)
 
     return PairedKeyResponseResult(
         offer=offer,
@@ -566,4 +620,7 @@ def run_paired_key_response(
         peer_result_terminator=peer_result_terminator,
         introduction=introduction,
         status=status,
+        peer_response=peer_response,
+        next_inbound_sequence=next_inbound,
+        next_outbound_sequence=next_outbound,
     )

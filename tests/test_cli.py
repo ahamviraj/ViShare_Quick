@@ -175,6 +175,70 @@ class TestViShareQuickCLI(unittest.TestCase):
         self.assertEqual(raised.exception.code, 2)
 
     @patch("vishare_quick.advertise.run_advertiser")
+    def test_introduction_capture_is_opt_in_and_passes_a_directory(self, mocked_advertiser):
+        mocked_advertiser.return_value = {
+            "instance_name": "instance", "endpoint_id": "abcd", "local_ip": "127.0.0.1",
+            "port": 1234, "tcp_connections": 0,
+        }
+        output = StringIO()
+        with redirect_stdout(output):
+            result = main([
+                "advertise", "--seconds", "1", "--ukey2-handshake",
+                "--paired-key-response", "--capture-introduction",
+            ])
+        self.assertEqual(result, 0)
+        kwargs = mocked_advertiser.call_args.kwargs
+        self.assertTrue(kwargs["capture_introduction"])
+        self.assertIsNone(kwargs["capture_introduction_dir"])
+        self.assertIn("may contain private sender", output.getvalue())
+
+        with redirect_stdout(StringIO()):
+            self.assertEqual(main([
+                "advertise", "--seconds", "1", "--ukey2-handshake",
+                "--paired-key-response", "--capture-introduction", "C:\\Temp\\captures",
+            ]), 0)
+        self.assertEqual(
+            mocked_advertiser.call_args.kwargs["capture_introduction_dir"],
+            "C:\\Temp\\captures",
+        )
+
+        for argv in (
+            ["advertise", "--seconds", "1", "--ukey2-handshake", "--capture-introduction"],
+            ["advertise", "--seconds", "1", "--capture-introduction"],
+        ):
+            with redirect_stdout(StringIO()), self.assertRaises(SystemExit) as raised:
+                main(argv)
+            self.assertEqual(raised.exception.code, 2)
+
+    @patch("vishare_quick.advertise.run_advertiser")
+    def test_introduction_filename_logging_is_opt_in(self, mocked_advertiser):
+        mocked_advertiser.return_value = {
+            "instance_name": "instance", "endpoint_id": "abcd", "local_ip": "127.0.0.1",
+            "port": 1234, "tcp_connections": 0,
+        }
+        output = StringIO()
+        with redirect_stdout(output):
+            result = main([
+                "advertise", "--seconds", "1", "--ukey2-handshake",
+                "--paired-key-response", "--log-introduction-filenames",
+            ])
+        self.assertEqual(result, 0)
+        self.assertTrue(
+            mocked_advertiser.call_args.kwargs["log_introduction_filenames"]
+        )
+        self.assertIn("filenames will be printed", output.getvalue())
+
+        with redirect_stdout(StringIO()), self.assertRaises(SystemExit) as raised:
+            main(["advertise", "--seconds", "1", "--log-introduction-filenames"])
+        self.assertEqual(raised.exception.code, 2)
+
+    def test_help_lists_introduction_diagnostic_options(self):
+        from vishare_quick.cli import build_parser
+        help_text = build_parser()._subparsers._group_actions[0].choices["advertise"].format_help()
+        self.assertIn("--capture-introduction", help_text)
+        self.assertIn("--log-introduction-filenames", help_text)
+
+    @patch("vishare_quick.advertise.run_advertiser")
     def test_hex_dump_option_enables_inspection_and_is_opt_in(self, mocked_advertiser):
         mocked_advertiser.return_value = {
             "instance_name": "instance", "endpoint_id": "abcd", "local_ip": "127.0.0.1",

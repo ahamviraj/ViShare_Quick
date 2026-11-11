@@ -15,6 +15,7 @@ import time
 from dataclasses import dataclass
 from typing import Callable
 
+from vishare_quick.console_output import console_gate
 from vishare_quick.protocol import (
     Frame,
     FrameTimeout,
@@ -35,6 +36,7 @@ from vishare_quick.secure_channel import (
     UnexpectedSequence,
     _parse_offline_frame,
 )
+from vishare_quick.sharing_response import connection_response_status_name
 from vishare_quick.ukey2 import HandshakeError
 
 # Stable, machine-readable categories. The device-side experiment can quote
@@ -215,7 +217,7 @@ class ProtocolTimeline:
     ``time.monotonic``.
     """
 
-    printer: Callable[[str], None] = print
+    printer: Callable[[str], None] = console_gate.write
     clock: Callable[[], float] = time.monotonic
     _start: float | None = None
 
@@ -326,6 +328,13 @@ class ProtocolTimeline:
                 summary.paired_key_result_status,
                 f"enum{summary.paired_key_result_status}",
             )
+        if summary.connection_response is not None:
+            response = summary.connection_response
+            fields["response_status"] = connection_response_status_name(
+                response.status
+            )
+            fields["attachment_details"] = response.attachment_details_count
+            fields["stream_metadata"] = response.stream_metadata_count
         fields.update(_payload_fields(summary.payload_transfer))
         fields.update(
             _transport_control_fields(
@@ -386,6 +395,13 @@ class ProtocolTimeline:
                 parsed.paired_key_result_status,
                 f"enum{parsed.paired_key_result_status}",
             )
+        if parsed.connection_response is not None:
+            response = parsed.connection_response
+            fields["response_status"] = connection_response_status_name(
+                response.status
+            )
+            fields["attachment_details"] = response.attachment_details_count
+            fields["stream_metadata"] = response.stream_metadata_count
         fields.update(_payload_fields(parsed.payload_transfer))
         fields.update(
             _transport_control_fields(

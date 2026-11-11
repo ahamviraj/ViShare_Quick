@@ -19,6 +19,10 @@ htmlcov/
 # PyInstaller
 *.spec
 
+# Local protocol captures (may contain private sender and file metadata)
+.vishare-quick/
+introduction-*.bin
+
 # Editors and operating systems
 .vscode/
 .idea/

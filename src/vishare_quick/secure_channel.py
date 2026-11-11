@@ -36,7 +36,21 @@ _OFFLINE_TYPES = {
 _SHARING_TYPES = {
     1: "INTRODUCTION", 2: "RESPONSE", 3: "PAIRED_KEY_ENCRYPTION",
     4: "PAIRED_KEY_RESULT", 5: "CERTIFICATE_INFO", 6: "CANCEL",
-    7: "PROGRESS_UPDATE",
+    7: "PROGRESS_UPDATE", 8: "BINDINGS",
+}
+_SHARING_TYPE_IDS = {name: number for number, name in _SHARING_TYPES.items()}
+
+# Body field for each sharing ``V1Frame`` type, from the published schema.
+# This is deliberately not ``type + 1``: ``progress_update`` is field 7 while
+# its type enum is also 7, and ``CANCEL`` has no body field at all.
+_SHARING_BODY_FIELDS = {
+    1: 2,  # introduction
+    2: 3,  # connection_response
+    3: 4,  # paired_key_encryption
+    4: 5,  # paired_key_result
+    5: 6,  # certificate_info (deprecated)
+    7: 7,  # progress_update (deprecated)
+    8: 8,  # bindings
 }
 
 
@@ -90,8 +104,29 @@ class PairedKeyFieldMetadata:
 
 
 @dataclass(frozen=True)
+class ConnectionResponseMetadata:
+    """Value-free summary of a sharing-layer ``ConnectionResponseFrame``.
+
+    Only the documented status enum and occurrence counts are retained. Map
+    keys are attachment hashes and map values contain receiver-side file state;
+    both are deliberately never decoded or rendered. A response is not consent
+    by itself, and this summary cannot be used to infer any.
+    """
+
+    status: int | None = None
+    attachment_details_count: int = 0
+    stream_metadata_count: int = 0
+    unknown_field_numbers: tuple[int, ...] = ()
+
+
+@dataclass(frozen=True)
 class PayloadTransferMetadata:
-    """Safe transport metadata for one authenticated PAYLOAD_TRANSFER frame."""
+    """Safe transport metadata for one authenticated PAYLOAD_TRANSFER frame.
+
+    ``control_event`` is set only for CONTROL packets (1=PAYLOAD_ERROR,
+    2=PAYLOAD_CANCELED, 3=deprecated PAYLOAD_RECEIVED_ACK). PAYLOAD_ACK
+    packets are represented by ``packet_type == 3`` with no control event.
+    """
 
     packet_type: int
     payload_id: int
@@ -102,6 +137,7 @@ class PayloadTransferMetadata:
     chunk_body_length: int
     is_last_chunk: bool
     complete_sharing_frame: bool
+    control_event: int | None = None
 
 
 @dataclass(frozen=True)
@@ -112,11 +148,16 @@ class AuthenticatedFrameSummary:
     paired_key_fields: tuple[PairedKeyFieldMetadata, ...] = ()
     payload_transfer: PayloadTransferMetadata | None = None
     paired_key_result_status: int | None = None
+    connection_response: ConnectionResponseMetadata | None = None
     # Safe transport-control metadata. Values are documented enum numbers and
     # booleans only; no frame body, key, or identity material is retained.
     keep_alive_ack: bool | None = None
     bandwidth_upgrade_retry_mediums: tuple[int, ...] = ()
     bandwidth_upgrade_retry_is_request: bool | None = None
+    # Decrypted DATA chunk body. Kept out of repr/logging and bounded by the
+    # frame reader. Introduction parsing and file writing need the authenticated
+    # bytes; nothing else may render them.
+    payload_body: bytes | None = field(default=None, repr=False)
 
 
 def _derive_securemessage_keys(next_secret: bytes, role: bytes) -> tuple[bytes, bytes]:
@@ -232,9 +273,14 @@ def _signed_int32(value: int, name: str, fields: dict[int, list[_Field]]) -> int
     return widened
 
 
-def _parse_sharing_frame(
-    data: bytes,
-) -> tuple[str, tuple[PairedKeyFieldMetadata, ...], int | None]:
+def parse_sharing_frame_envelope(data: bytes) -> tuple[str, bytes]:
+    """Return a validated sharing ``Frame``'s message name and body bytes.
+
+    The outer ``Frame``/``V1Frame`` envelope is checked with exactly the same
+    strict rules used for authenticated frames. The body is returned unparsed
+    so a focused module can decode a single message type (for example
+    ``IntroductionFrame``) without duplicating protobuf framing logic.
+    """
     frame = _parse(data, "sharing Frame")
     version = _one(frame, 1, 0, "sharing Frame version")
     v1_bytes = _one(frame, 2, 2, "sharing Frame v1")
@@ -244,24 +290,76 @@ def _parse_sharing_frame(
     type_id = _one(v1, 1, 0, "sharing Frame type")
     if not isinstance(type_id, int) or type_id not in _SHARING_TYPES:
         raise SecureChannelError("Unsupported sharing Frame type.")
-    body_field = type_id + 1
+    body_field = _SHARING_BODY_FIELDS.get(type_id)
+    if body_field is None:
+        # CANCEL (6) is signalled by the type alone; the published schema has
+        # no cancel body field, so any field here is malformed.
+        if any(number in v1 for number in range(2, 16)):
+            raise SecureChannelError("Sharing CANCEL must not carry a body.")
+        return _SHARING_TYPES[type_id], b""
     body = _one(v1, body_field, 2, "sharing Frame body")
     if not isinstance(body, bytes):
         raise SecureChannelError("Malformed sharing Frame body.")
     body_fields = [n for n in range(2, 16) if n in v1]
     if body_fields != [body_field]:
         raise SecureChannelError("Sharing Frame has a missing or conflicting body.")
+    return _SHARING_TYPES[type_id], body
+
+
+def _summarize_connection_response(
+    fields: dict[int, list[_Field]],
+) -> ConnectionResponseMetadata:
+    """Summarize a ``ConnectionResponseFrame`` without retaining any values.
+
+    ``status`` is field 1 (enum, int32 semantics). ``attachment_details`` is a
+    map whose keys are attachment hashes; ``stream_metadata`` is repeated. Both
+    are counted only. Unknown fields are reported by number, never by value.
+    """
+    raw_status = _one(
+        fields, 1, 0, "ConnectionResponseFrame status", required=False
+    )
+    status = (
+        None
+        if raw_status is None
+        else _signed_int32(raw_status, "ConnectionResponseFrame status", fields)
+    )
+    for number, name in ((2, "attachment_details"), (3, "stream_metadata")):
+        for item in fields.get(number, []):
+            if item.wire != 2:
+                raise SecureChannelError(
+                    f"ConnectionResponseFrame {name} has the wrong protobuf "
+                    f"wire type (received_wire={item.wire}; expected_wire=2)."
+                )
+    return ConnectionResponseMetadata(
+        status=status,
+        attachment_details_count=len(fields.get(2, [])),
+        stream_metadata_count=len(fields.get(3, [])),
+        unknown_field_numbers=tuple(sorted(set(fields) - {1, 2, 3})),
+    )
+
+
+def _parse_sharing_frame(
+    data: bytes,
+) -> tuple[
+    str,
+    tuple[PairedKeyFieldMetadata, ...],
+    int | None,
+    ConnectionResponseMetadata | None,
+]:
+    name, body = parse_sharing_frame_envelope(data)
+    type_id = _SHARING_TYPE_IDS[name]
     body_message = _parse(body, "sharing message")
-    name = _SHARING_TYPES[type_id]
+    if type_id == 2:
+        return name, (), None, _summarize_connection_response(body_message)
     if type_id == 4:
         status = _one(
             body_message, 1, 0, "PairedKeyResultFrame status", required=False
         )
         if status is not None and (not isinstance(status, int) or status not in (0, 1, 2, 3)):
             raise SecureChannelError("Unsupported PairedKeyResultFrame status.")
-        return name, (), status
+        return name, (), status, None
     if type_id != 3:
-        return name, (), None
+        return name, (), None, None
 
     names = {
         1: "signed_data",
@@ -281,7 +379,7 @@ def _parse_sharing_frame(
         if entry.wire != 2 or not isinstance(entry.value, bytes):
             raise SecureChannelError(f"PairedKeyEncryptionFrame {field_name} has the wrong wire type.")
         summaries.append(PairedKeyFieldMetadata(field_name, True, len(entry.value)))
-    return name, tuple(summaries), None
+    return name, tuple(summaries), None, None
 
 
 @dataclass(frozen=True)
@@ -291,9 +389,11 @@ class _ParsedOfflineFrame:
     paired_key_fields: tuple[PairedKeyFieldMetadata, ...]
     payload_transfer: PayloadTransferMetadata | None
     paired_key_result_status: int | None
+    connection_response: ConnectionResponseMetadata | None = None
     keep_alive_ack: bool | None = None
     bandwidth_upgrade_retry_mediums: tuple[int, ...] = ()
     bandwidth_upgrade_retry_is_request: bool | None = None
+    payload_body: bytes | None = field(default=None, repr=False)
 
 
 def _parse_offline_frame(data: bytes) -> _ParsedOfflineFrame:
@@ -364,15 +464,18 @@ def _parse_offline_frame(data: bytes) -> _ParsedOfflineFrame:
     payload = _parse(body, "PayloadTransferFrame")
     packet_type = _one(payload, 1, 0, "PayloadTransferFrame packet_type")
     header_bytes = _one(payload, 2, 2, "PayloadTransferFrame payload_header")
-    chunk_bytes = _one(payload, 3, 2, "PayloadTransferFrame payload_chunk")
-    if 4 in payload:
-        raise InvalidPayloadStructure("Unexpected control message in DATA packet.")
-    if packet_type != 1 or not isinstance(header_bytes, bytes) or not isinstance(chunk_bytes, bytes):
+    if (
+        not isinstance(packet_type, int)
+        or packet_type not in (1, 2, 3)
+        or not isinstance(header_bytes, bytes)
+    ):
         raise InvalidPayloadStructure("Malformed or unsupported PayloadTransferFrame packet.")
 
     header = _parse(header_bytes, "PayloadHeader")
     raw_id = _one(header, 1, 0, "PayloadHeader id")
-    raw_type = _one(header, 2, 0, "PayloadHeader type")
+    raw_type = _one(
+        header, 2, 0, "PayloadHeader type", required=packet_type != 3
+    )
     raw_total_size = _one(header, 3, 0, "PayloadHeader total_size")
 
     # Google's offline_wire_formats.proto declares all three as signed integer
@@ -382,16 +485,21 @@ def _parse_offline_frame(data: bytes) -> _ParsedOfflineFrame:
     # size. It must not be compared with DEFAULT_MAX_FRAME_LENGTH; actual bytes
     # remain bounded by the frame reader and by the chunk body length.
     payload_id = _signed_int64(raw_id, "PayloadHeader id", header)
-    payload_type = _signed_int32(raw_type, "PayloadHeader type", header)
+    payload_type = (
+        0 if raw_type is None else _signed_int32(raw_type, "PayloadHeader type", header)
+    )
     total_size = _signed_int64(raw_total_size, "PayloadHeader total_size", header)
 
     problems: list[str] = []
     if payload_type not in _PAYLOAD_TYPES:
         problems.append(f"unsupported type enum {payload_type} (expected 0..3)")
     # Google's transport uses -1 ("indeterminate") only for STREAM payloads
-    # whose size is unknown (outgoing_payload_manager.cc). BYTES and FILE must
-    # declare a non-negative size.
-    if total_size < 0 and not (total_size == -1 and payload_type in (0, 3)):
+    # whose size is unknown (outgoing_payload_manager.cc), and PAYLOAD_ACK
+    # packets carry it unconditionally. BYTES and FILE must declare a
+    # non-negative size.
+    if total_size < 0 and not (
+        total_size == -1 and (payload_type in (0, 3) or packet_type == 3)
+    ):
         problems.append(
             f"total_size {total_size} is negative and is not an indeterminate STREAM size"
         )
@@ -402,6 +510,60 @@ def _parse_offline_frame(data: bytes) -> _ParsedOfflineFrame:
             + f" [id={payload_id}; type={payload_type}; total_size={total_size}; "
             + f"present_fields={_field_diagnostic(header)}]."
         )
+
+    if packet_type != 1:
+        # CONTROL (2) cancels/errors a payload; PAYLOAD_ACK (3) acknowledges a
+        # received payload. Both are legal on the authenticated channel and
+        # must never be mistaken for file data.
+        if 3 in payload:
+            raise InvalidPayloadStructure(
+                "Unexpected payload chunk in a non-DATA PayloadTransferFrame."
+            )
+        control_event: int | None = None
+        if packet_type == 2:
+            control_bytes = _one(
+                payload, 4, 2, "PayloadTransferFrame control_message"
+            )
+            if not isinstance(control_bytes, bytes):
+                raise InvalidPayloadStructure("Malformed PayloadTransferFrame control_message.")
+            control = _parse(control_bytes, "ControlMessage")
+            raw_event = _one(
+                control, 1, 0, "ControlMessage event", required=False
+            )
+            raw_offset = _one(
+                control, 2, 0, "ControlMessage offset", required=False
+            )
+            if raw_event is not None:
+                if not isinstance(raw_event, int) or raw_event not in (0, 1, 2, 3):
+                    raise InvalidPayloadStructure(
+                        "ControlMessage event is not a documented enum value."
+                    )
+                control_event = raw_event
+            if raw_offset is not None:
+                _signed_int64(raw_offset, "ControlMessage offset", control)
+        elif 4 in payload:
+            raise InvalidPayloadStructure(
+                "Unexpected control message in PAYLOAD_ACK packet."
+            )
+        metadata = PayloadTransferMetadata(
+            packet_type=packet_type,
+            payload_id=payload_id,
+            payload_type=payload_type,
+            total_size=total_size,
+            chunk_flags=None,
+            chunk_offset=0,
+            chunk_body_length=0,
+            is_last_chunk=False,
+            complete_sharing_frame=False,
+            control_event=control_event,
+        )
+        return _ParsedOfflineFrame(offline_type, None, (), metadata, None)
+
+    if 4 in payload:
+        raise InvalidPayloadStructure("Unexpected control message in DATA packet.")
+    chunk_bytes = _one(payload, 3, 2, "PayloadTransferFrame payload_chunk")
+    if not isinstance(chunk_bytes, bytes):
+        raise InvalidPayloadStructure("Malformed or unsupported PayloadTransferFrame packet.")
 
     # Field numbers follow Google's PayloadChunk schema: flags=1, offset=2,
     # body=3, index=4. In particular, body is not field 2. The body is optional
@@ -448,10 +610,18 @@ def _parse_offline_frame(data: bytes) -> _ParsedOfflineFrame:
         complete_sharing_frame=complete,
     )
     if not complete:
-        return _ParsedOfflineFrame(offline_type, None, (), metadata, None)
-    sharing_type, paired_key_fields, result_status = _parse_sharing_frame(body_bytes)
+        return _ParsedOfflineFrame(
+            offline_type, None, (), metadata, None, payload_body=body_bytes
+        )
+    sharing_type, paired_key_fields, result_status, connection_response = _parse_sharing_frame(body_bytes)
     return _ParsedOfflineFrame(
-        offline_type, sharing_type, paired_key_fields, metadata, result_status
+        offline_type,
+        sharing_type,
+        paired_key_fields,
+        metadata,
+        result_status,
+        connection_response=connection_response,
+        payload_body=body_bytes,
     )
 
 
@@ -525,9 +695,11 @@ def authenticate_and_inspect_frame(
         parsed.paired_key_fields,
         parsed.payload_transfer,
         parsed.paired_key_result_status,
+        connection_response=parsed.connection_response,
         keep_alive_ack=parsed.keep_alive_ack,
         bandwidth_upgrade_retry_mediums=parsed.bandwidth_upgrade_retry_mediums,
         bandwidth_upgrade_retry_is_request=parsed.bandwidth_upgrade_retry_is_request,
+        payload_body=parsed.payload_body,
     )
 
 

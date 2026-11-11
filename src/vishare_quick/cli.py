@@ -39,10 +39,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="experimentally advertise this laptop as a Quick Share-style endpoint",
         description=(
             "Publish an experimental mDNS endpoint and listen for TCP connections. "
-            "UKEY2 response is disabled unless --ukey2-handshake is selected; file transfer "
-            "and the BLE trigger are not implemented. The opt-in mode sends a plaintext Nearby "
-            "CONNECTION_RESPONSE exchange, then closes before encrypted traffic unless a separate "
-            "--inspect-encrypted-frame, --paired-key-probe, or --paired-key-response mode is selected."
+            "UKEY2 response is disabled unless --ukey2-handshake is selected; the BLE trigger "
+            "is not implemented and file transfer requires --receive-files. The opt-in mode "
+            "sends a plaintext Nearby CONNECTION_RESPONSE exchange, then closes before encrypted "
+            "traffic unless a separate --inspect-encrypted-frame, --paired-key-probe, "
+            "--paired-key-response, or --receive-files mode is selected."
         ),
     )
     advertise.add_argument("--name", default="ViShare Quick", help="visible device name")
@@ -72,9 +73,46 @@ def build_parser() -> argparse.ArgumentParser:
         "--paired-key-response",
         action="store_true",
         help=(
-            "with --ukey2-handshake, reply to the authenticated paired-key offer with an empty "
-            "PairedKeyEncryptionFrame and PairedKeyResultFrame UNABLE; experimental, no identity "
-            "material, no consent, no file transfer"
+            "with --ukey2-handshake, reply to the authenticated paired-key offer with a "
+            "72-byte/6-byte random no-credential placeholder PKE and PairedKeyResultFrame "
+            "UNABLE; experimental, no identity material. Add --receive-files to continue "
+            "through Introduction, PIN comparison, consent, and file reception"
+        ),
+    )
+    advertise.add_argument(
+        "--receive-files",
+        action="store_true",
+        help=(
+            "with --ukey2-handshake, continue the paired-key response stage through "
+            "Introduction parsing, explicit PIN comparison, explicit consent, and streaming "
+            "reception of the offered files; never accepts automatically"
+        ),
+    )
+    advertise.add_argument(
+        "--download-dir",
+        metavar="DIR",
+        help=(
+            "destination directory for --receive-files (default: ~/Downloads); "
+            "existing files are never overwritten"
+        ),
+    )
+    advertise.add_argument(
+        "--capture-introduction",
+        nargs="?",
+        const="",
+        metavar="DIR",
+        help=(
+            "with --paired-key-response or --receive-files, save the raw authenticated "
+            "Introduction body for analysis (default: ~/.vishare-quick/introductions); "
+            "never saves keys or envelopes, refuses '..' paths, and never overwrites"
+        ),
+    )
+    advertise.add_argument(
+        "--log-introduction-filenames",
+        action="store_true",
+        help=(
+            "with --paired-key-response or --receive-files, include sanitized offered "
+            "filenames in Introduction diagnostics (disabled by default)"
         ),
     )
     advertise.add_argument(
@@ -135,13 +173,51 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("--paired-key-response cannot be combined with --inspect-encrypted-frame")
         if args.paired_key_response and args.paired_key_probe:
             parser.error("--paired-key-response cannot be combined with --paired-key-probe")
+        if args.receive_files and not args.ukey2_handshake:
+            parser.error("--receive-files requires --ukey2-handshake")
+        if args.receive_files and args.inspect_encrypted_frame:
+            parser.error("--receive-files cannot be combined with --inspect-encrypted-frame")
+        if args.receive_files and args.paired_key_probe:
+            parser.error("--receive-files cannot be combined with --paired-key-probe")
+        if args.download_dir is not None and not args.receive_files:
+            parser.error("--download-dir requires --receive-files")
+        introduction_mode = args.paired_key_response or args.receive_files
+        if args.capture_introduction is not None and not introduction_mode:
+            parser.error(
+                "--capture-introduction requires --paired-key-response or --receive-files"
+            )
+        if args.log_introduction_filenames and not introduction_mode:
+            parser.error(
+                "--log-introduction-filenames requires --paired-key-response "
+                "or --receive-files"
+            )
         if args.protocol_timeline and not args.ukey2_handshake:
             parser.error("--protocol-timeline requires --ukey2-handshake")
         try:
             from vishare_quick.advertise import run_advertiser
             print("Starting experimental Quick Share-style mDNS advertisement.")
+            if args.capture_introduction is not None:
+                print(
+                    "WARNING: raw Introduction capture is enabled. The saved body is the "
+                    "decrypted protocol message and may contain private sender, filename, "
+                    "folder, and transfer metadata. Store it securely and do not commit it."
+                )
+            if args.log_introduction_filenames:
+                print(
+                    "WARNING: sanitized offered filenames will be printed with Introduction "
+                    "diagnostics. Disable --log-introduction-filenames for redacted output."
+                )
             if args.ukey2_handshake:
-                if args.paired_key_probe:
+                if args.receive_files:
+                    print(
+                        "WARNING: experimental Quick Share file reception. After the "
+                        "authenticated paired-key stage this parses the Introduction, derives the "
+                        "4-digit PIN from the UKEY2 auth string for you to compare with Android, "
+                        "and requires an explicit terminal PIN match and consent before any file "
+                        "bytes are accepted. Paired-key identity remains UNABLE and unverified; "
+                        "received files are never executed and never overwrite existing files."
+                    )
+                elif args.paired_key_probe:
                     print(
                         "WARNING: experimental UKEY2 mode sends SERVER_INIT and plaintext "
                         "CONNECTION_RESPONSE ACCEPT. Paired-key probe authenticates one inbound "
@@ -155,6 +231,7 @@ def main(argv: list[str] | None = None) -> int:
                         "fresh random 72-byte signed_data and 6-byte secret_id_hash placeholders "
                         "(no certificate, signature, or QR data) and a PairedKeyResultFrame UNABLE. "
                         "It does not claim a verified identity, request consent, or transfer files. "
+                        "Add --receive-files to enable the separate consent and reception stage. "
                         "Android acceptance is unverified."
                     )
                 elif args.inspect_encrypted_frame:
@@ -184,6 +261,11 @@ def main(argv: list[str] | None = None) -> int:
                 paired_key_probe=args.paired_key_probe,
                 paired_key_response=args.paired_key_response,
                 protocol_timeline=args.protocol_timeline,
+                receive_files=args.receive_files,
+                download_dir=args.download_dir,
+                capture_introduction=args.capture_introduction is not None,
+                capture_introduction_dir=args.capture_introduction or None,
+                log_introduction_filenames=args.log_introduction_filenames,
             )
         except (RuntimeError, ValueError, OSError) as exc:
             print(f"Advertisement failed: {exc}", file=sys.stderr)
