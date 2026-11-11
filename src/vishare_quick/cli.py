@@ -1,4 +1,4 @@
-"""Command-line interface for ViShare_Quick alpha_0.4-dev."""
+"""Command-line interface for ViShare_Quick alpha_0.4."""
 
 import argparse
 import sys

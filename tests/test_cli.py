@@ -298,5 +298,45 @@ class TestViShareQuickCLI(unittest.TestCase):
         self.assertIn("n=sample-metadata", rendered)
 
 
+class TestDoubleClickPause(unittest.TestCase):
+    def test_frozen_no_argument_terminal_launch_waits_for_enter(self):
+        from vishare_quick.__main__ import pause_if_double_clicked
+
+        with patch("builtins.input", return_value="") as prompt:
+            paused = pause_if_double_clicked(
+                ["vishare-quick"], frozen=True, interactive=True
+            )
+        self.assertTrue(paused)
+        prompt.assert_called_once()
+
+    def test_non_interactive_or_argument_launches_never_block(self):
+        from vishare_quick.__main__ import pause_if_double_clicked
+
+        cases = (
+            (["vishare-quick"], True, False),
+            (["vishare-quick", "--version"], True, True),
+            (["vishare-quick"], False, True),
+        )
+        for argv, frozen, interactive in cases:
+            with self.subTest(argv=argv, frozen=frozen, interactive=interactive):
+                with patch("builtins.input") as prompt:
+                    self.assertFalse(
+                        pause_if_double_clicked(
+                            argv, frozen=frozen, interactive=interactive
+                        )
+                    )
+                prompt.assert_not_called()
+
+    def test_closed_input_does_not_raise(self):
+        from vishare_quick.__main__ import pause_if_double_clicked
+
+        with patch("builtins.input", side_effect=EOFError):
+            self.assertTrue(
+                pause_if_double_clicked(
+                    ["vishare-quick"], frozen=True, interactive=True
+                )
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -11,7 +11,23 @@ Prebuilt single-file executables are attached to the release:
 - Linux x64: `vishare-quick` (x86_64, glibc 2.35 or newer)
 
 Both are self-contained PyInstaller builds of the same CLI and use the same explicit PIN
-confirmation and consent prompts. Check the build with `vishare-quick --version`.
+confirmation and consent prompts. They are command-line tools: run them from a terminal, not
+by double-clicking. A double-clicked Windows build only shows its help and waits for Enter.
+
+Linux downloads do not keep the executable bit, so set it once:
+
+```bash
+chmod +x vishare-quick
+./vishare-quick --version
+./vishare-quick advertise --ukey2-handshake --receive-files
+```
+
+Windows (PowerShell):
+
+```powershell
+.\vishare-quick.exe --version
+.\vishare-quick.exe advertise --ukey2-handshake --receive-files
+```
 
 This build advances the experimental Alpha 0.3 mDNS advertiser with a read-only TCP frame
 inspector and a separate, opt-in UKEY2 plus plaintext Nearby connection-response experiment. It reads four-byte big-endian
