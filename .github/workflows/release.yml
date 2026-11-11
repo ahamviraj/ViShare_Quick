@@ -20,7 +20,11 @@ jobs:
           - os: windows-latest
             artifact_name: vishare-quick-windows-x64
             output_file: dist/vishare-quick.exe
-          - os: ubuntu-latest
+          # Ubuntu 22.04 is kept deliberately instead of ubuntu-latest so the
+          # frozen Python and OpenSSL libs only need glibc 2.35, which keeps the
+          # asset usable on current LTS distributions such as Ubuntu 22.04+ and
+          # Debian 12. Building on a newer runner raises that floor.
+          - os: ubuntu-22.04
             artifact_name: vishare-quick-linux-x64
             output_file: dist/vishare-quick
     runs-on: ${{ matrix.os }}

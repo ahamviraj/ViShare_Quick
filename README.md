@@ -8,7 +8,7 @@
 Prebuilt single-file executables are attached to the release:
 
 - Windows x64: `vishare-quick.exe`
-- Linux x64: `vishare-quick`
+- Linux x64: `vishare-quick` (x86_64, glibc 2.35 or newer)
 
 Both are self-contained PyInstaller builds of the same CLI and use the same explicit PIN
 confirmation and consent prompts. Check the build with `vishare-quick --version`.
