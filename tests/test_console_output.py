@@ -64,8 +64,8 @@ class GateTests(unittest.TestCase):
             # The user sees the prompt, then a keep-alive fires before Enter.
             observed.append("PROMPT " + prompt)
             gate.write("KEEP_ALIVE ack=false")
-            observed.append("ANSWER 0059")
-            return "0059"
+            observed.append("ANSWER y")
+            return "y"
 
         prompter = ConsolePrompter(
             input_fn=fake_input,
@@ -77,10 +77,49 @@ class GateTests(unittest.TestCase):
         # No log line may appear between the prompt and the answer.
         self.assertEqual(
             observed[-2:],
-            ["PROMPT Type the 4-digit PIN shown on Android (blank to reject): ",
-             "ANSWER 0059"],
+            ["PROMPT Do the codes match? Type y to confirm, n to reject: ",
+             "ANSWER y"],
         )
         self.assertEqual(transcript, ["LOG KEEP_ALIVE ack=false"])
+
+    def test_local_code_is_shown_automatically(self):
+        shown: list[str] = []
+        prompter = ConsolePrompter(
+            input_fn=lambda _prompt: "y",
+            output=shown.append,
+            gate=ConsoleGate(output=lambda _line: None),
+        )
+        self.assertEqual(prompter.ask_pin("0059"), "0059")
+        self.assertIn("    Local code: 0059", shown)
+
+    def test_pin_confirmation_accepts_yes(self):
+        for answer in ("y", "Y", "yes", " YES "):
+            prompter = ConsolePrompter(
+                input_fn=lambda _prompt, answer=answer: answer,
+                output=lambda _line: None,
+                gate=ConsoleGate(output=lambda _line: None),
+            )
+            self.assertEqual(prompter.ask_pin("0059"), "0059", answer)
+
+    def test_pin_confirmation_rejects_blank_n_and_unknown_answers(self):
+        for answer in ("", "   ", "n", "no", "1", "0058"):
+            prompter = ConsolePrompter(
+                input_fn=lambda _prompt, answer=answer: answer,
+                output=lambda _line: None,
+                gate=ConsoleGate(output=lambda _line: None),
+            )
+            self.assertIsNone(prompter.ask_pin("0059"), answer)
+
+    def test_pin_confirmation_fails_closed_at_end_of_input(self):
+        def raise_eof(_prompt: str) -> str:
+            raise EOFError
+
+        prompter = ConsolePrompter(
+            input_fn=raise_eof,
+            output=lambda _line: None,
+            gate=ConsoleGate(output=lambda _line: None),
+        )
+        self.assertIsNone(prompter.ask_pin("0059"))
 
     def test_consent_prompt_also_holds_the_gate(self):
         transcript: list[str] = []

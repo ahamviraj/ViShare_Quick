@@ -21,8 +21,9 @@ provide trustworthy, identity-valid response material for this project. The sepa
 authenticated Android offer and terminator it sends the protocol's random
 72-byte `signed_data` / 6-byte `secret_id_hash` placeholder
 `PairedKeyEncryptionFrame` plus `PairedKeyResultFrame.UNABLE`, then observes the
-peer result. None of these modes implements
-consent or file transfer.
+peer result. The separate `--receive-files` mode adds an explicit PIN match
+confirmation, a local consent decision, and streaming reception of plain file
+payloads as described in [File reception](#file-reception---receive-files).
 
 ## Commands
 
@@ -36,6 +37,8 @@ python -m vishare_quick advertise --name "ViShare Quick" --seconds 120 --ukey2-h
 python -m vishare_quick advertise --name "ViShare Quick" --seconds 120 --ukey2-handshake --inspect-encrypted-frame
 python -m vishare_quick advertise --name "ViShare Quick" --seconds 120 --ukey2-handshake --paired-key-probe
 python -m vishare_quick advertise --name "ViShare Quick" --seconds 120 --ukey2-handshake --paired-key-response
+python -m vishare_quick advertise --name "ViShare Quick" --seconds 120 --ukey2-handshake --receive-files
+python -m vishare_quick advertise --name "ViShare Quick" --seconds 120 --ukey2-handshake --receive-files --download-dir D:\Incoming
 python -m vishare_quick advertise --name "ViShare Quick" --seconds 120 --dump-first-frame-hex
 python -m vishare_quick advertise --name "ViShare Quick" --seconds 120 --dump-frame-hex-index 2
 ```
@@ -61,16 +64,52 @@ frame (sequence 2). It sends no paired-key message. A peer follow-up without a l
 reported as such; it is not treated as a successful pairing transition.
 `--paired-key-response` requires `--ukey2-handshake` and cannot be combined with either probe or
 encrypted inspection. It waits for the authenticated Android PKE offer (sequence 1) and its
-zero-length `LAST_CHUNK` terminator (sequence 2) before writing anything. It then sends an empty
-`PairedKeyEncryptionFrame` (all schema-optional identity bytes absent, not random placeholders) and
-`PairedKeyResultFrame.UNABLE` as outbound sequences 1–4, using independent server-to-client keys.
-It authenticates the peer result (sequences 3–4) and an optional Introduction (sequence 5). It does
-not claim a verified identity, request consent, or transfer files. Whether Android accepts the empty
-PKE variant is unverified; Chromium's own no-certificate fallback uses random bytes instead, which
-this project deliberately does not copy.
+zero-length `LAST_CHUNK` terminator (sequence 2) before writing anything. It then sends a
+`PairedKeyEncryptionFrame` carrying fresh random 72-byte `signed_data` and 6-byte `secret_id_hash`
+placeholders (the other identity fields are absent) plus `PairedKeyResultFrame.UNABLE` as outbound
+sequences 1–4, using independent server-to-client keys. It authenticates the peer result
+(sequences 3–4) and an optional Introduction (sequence 5). It does not claim a verified identity.
+The placeholders are not real signatures or known-peer identifiers, so Android's acceptance is
+still not a claim of identity verification.
 `--dump-first-frame-hex` and `--dump-frame-hex-index N` opt in to a maximum 96-byte hexadecimal
 prefix of the selected complete frame, including the four-byte length prefix. No other frames are
 dumped, and bytes are not decoded as text.
+
+## File reception (`--receive-files`)
+
+`--receive-files` requires `--ukey2-handshake` and implies the paired-key response stage. After the
+authenticated Introduction it:
+
+1. Derives the 4-digit code from the UKEY2 auth string and displays it as `Local code: NNNN`.
+2. Asks the user to compare that code with the PIN shown on Android and type `y` to confirm a match
+   or `n` to reject. A blank line, end of input, or any other answer fails closed; there is no
+   automatic acceptance.
+3. Shows the sanitized file list and total size, then requires an explicit accept (`1`, `accept`,
+   `a`, `yes`, or `y`) before any file bytes are accepted.
+4. Sends the sharing `RESPONSE`, streams each FILE payload to disk, and sends `DISCONNECTION` when
+   the transfer ends.
+
+### Destination and filenames
+
+The default destination is `~/Downloads` (the user's home Downloads folder). Use
+`--download-dir PATH` to choose another directory; the path may be absolute or relative to the
+current directory and is created if it does not exist. `--download-dir` is only valid together with
+`--receive-files`.
+
+Peer-supplied names are reduced to a bare basename: path separators, traversal segments, control
+and formatting characters, Windows-invalid characters, reserved device names, and leading/trailing
+dots are removed. Files are never overwritten. If a name already exists, the receiver chooses
+`name (1).ext`, `name (2).ext`, and so on. Bytes are streamed to a hidden
+`.vishare-partial-*.part` file and atomically renamed only after the declared size and chunk
+boundaries are satisfied; any failure closes and removes the temporary file.
+
+### Integrity and limits
+
+There is no end-to-end file digest in the reviewed Introduction or payload schema, so the receiver
+reports a local SHA-256 for the user but does not claim it as peer verification. The integrity
+statement is the declared size plus strict chunk offsets, and the final zero-length `LAST_CHUNK`.
+Chunked (multi-frame) BYTES sharing payloads are not reassembled, and text-only shares are not
+saved as files. Received files are never executed.
 
 ## UKEY2 status
 
@@ -84,19 +123,18 @@ observations establish offer metadata only, not commitment validity or peer auth
 (`P256_SHA512`), and the documented `AES_256_CBC-HMAC_SHA256` next-protocol offer. It validates
 the offer, sends a schema-encoded `SERVER_INIT`, verifies `CLIENT_FINISH`, derives the reference
 implementation's verification and next-secret material without logging the values, then exchanges
-plaintext Nearby `CONNECTION_RESPONSE` ACCEPT frames. This does not complete peer identity
-verification or the subsequent sharing protocol. The UKEY2 transcript and directional SecureMessage
+plaintext Nearby `CONNECTION_RESPONSE` ACCEPT frames. It can then run the paired-key response and,
+with `--receive-files`, the consent-gated reception described above. Peer identity is still not
+verified: the paired-key result is `UNABLE`, so the PIN comparison is the only out-of-band check.
+The UKEY2 transcript and directional SecureMessage
 key schedule have been cross-checked against NearShare and NearDrop source code, and the SecureMessage
 processing order against squick-share. No external byte-for-byte known-answer vector is available.
-Tests use deterministic synthetic fixtures and do not establish XPad interoperability. A user-reported
-XPad frame was 214 bytes on wire (177-byte `header_and_body`, 32-byte signature), but its raw bytes are
-not available in the repository; the latest user-reported real-device output says that frame
-authenticated and decrypted as `PAYLOAD_TRANSFER` → `PAIRED_KEY_ENCRYPTION`, sequence 1. This reported
-runtime result is separate from synthetic tests and is not independently reproducible from the raw
-capture here. The no-credential response mode has only synthetic tests; Android acceptance is
-unverified. Android still showed Connecting → Failed. No pairing, successful connection, or file
-transfer has been demonstrated. Use
-this experimental response mode only for a controlled real-device test. Details are in
+Tests use deterministic synthetic fixtures. Live Android 14 XPad runs on a trusted local network
+completed end-to-end reception for small image and document payloads, confirming the sender's
+524,288-byte chunks and zero-length `LAST_CHUNK` terminator. A multi-gigabyte movie transfer was
+reported by the user but not logged in this repository. Raw captures and peer filenames are not
+stored here. Sending remains unimplemented. Use the experimental response mode only for controlled
+real-device tests. Details are in
 [the Alpha 0.4 research notes](docs/ALPHA_0.4_RESEARCH.md) and [encrypted protocol research](docs/ALPHA_0.4_ENCRYPTED_PROTOCOL_RESEARCH.md).
 
 ## Install and test
@@ -121,9 +159,9 @@ The encrypted-frame diagnostic and its limitations are described in
 - `alpha_0.1`: CLI foundation
 - `alpha_0.2`: passive Android Quick Share mDNS discovery
 - `alpha_0.3`: experimental mDNS advertisement; Android discovery observed on one Infinix XPad
-- `alpha_0.4`: bounded inspection and an opt-in experimental P256_SHA512 UKEY2 plus plaintext Nearby connection-response exchange; an experimental no-credential paired-key response (random 72-byte `signed_data` + 6-byte `secret_id_hash` placeholder PKE + UNABLE) is available but unverified, and encrypted consent/file transfer remain unimplemented
-- Future milestone: implement and validate the complete receiver handshake and file reception
+- `alpha_0.4`: bounded inspection, opt-in P256_SHA512 UKEY2, plaintext Nearby connection-response exchange, no-credential paired-key response (random-placeholder PKE + UNABLE), and a consent-gated streaming file receiver verified on one Android 14 XPad; peer identity verification and sending remain unimplemented
+- Future milestone: verify multi-file and text-only shares across more devices and display formats
 - Later milestone: implement and validate sending
 
-No release tag or Alpha 0.4 release has been created. A successful file transfer has not been
-demonstrated.
+No release tag or Alpha 0.4 release has been created. File reception has been demonstrated on one
+trusted local network; it is not a claim of peer identity verification or broad interoperability.

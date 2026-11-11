@@ -213,9 +213,10 @@ def main(argv: list[str] | None = None) -> int:
                         "WARNING: experimental Quick Share file reception. After the "
                         "authenticated paired-key stage this parses the Introduction, derives the "
                         "4-digit PIN from the UKEY2 auth string for you to compare with Android, "
-                        "and requires an explicit terminal PIN match and consent before any file "
-                        "bytes are accepted. Paired-key identity remains UNABLE and unverified; "
-                        "received files are never executed and never overwrite existing files."
+                        "and requires you to confirm the codes match plus explicit consent before "
+                        "any file bytes are accepted. Files are saved under --download-dir "
+                        "(default: ~/Downloads) and never overwrite existing files. Paired-key "
+                        "identity remains UNABLE and unverified; received files are never executed."
                     )
                 elif args.paired_key_probe:
                     print(

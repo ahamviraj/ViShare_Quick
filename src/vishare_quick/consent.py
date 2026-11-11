@@ -102,9 +102,10 @@ class Prompter(Protocol):
     """Injected human interface. Implementations must never auto-accept."""
 
     def ask_pin(self, code: str) -> str | None:
-        """Show the local code and return the code the user read on the sender.
+        """Show the local code and return it only after an explicit match.
 
-        Returning ``None`` means the user rejected or could not confirm.
+        Implementations return ``code`` only when the user confirms that the
+        sender displays the same PIN, and ``None`` on rejection.
         """
 
     def request_consent(self, request: ConsentRequest) -> bool:
@@ -154,17 +155,23 @@ class ConsolePrompter:
             self._output(
                 "Both devices derive this code from the authenticated UKEY2 handshake."
             )
-            self._output(f"Local protocol code: {code}")
+            self._output("")
+            self._output(f"    Local code: {code}")
+            self._output("")
             self._output(
                 "Compare it with the PIN shown on the Android device. Do not continue "
                 "if the codes differ or you did not initiate/expect this transfer."
             )
-            entered = self._read(
-                "Type the 4-digit PIN shown on Android (blank to reject): "
+            answer = self._read(
+                "Do the codes match? Type y to confirm, n to reject: "
             )
-            if entered is None or not entered.strip():
+            if answer is None:
                 return None
-            return entered
+            # Anything other than an explicit affirmative confirmation,
+            # including a blank line, fails closed.
+            if answer.strip().lower() in {"y", "yes"}:
+                return code
+            return None
 
     def request_consent(self, request: ConsentRequest) -> bool:
         with self._paused():
