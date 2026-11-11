@@ -133,6 +133,28 @@ class ProgressReporterTests(unittest.TestCase):
         report(1, 100, 100)
         self.assertEqual(sum("complete" in line for line in lines), 1)
 
+    def test_every_file_in_a_multi_file_share_gets_a_completion_line(self):
+        report, lines, now = self._reporter()
+        for payload_id, size in ((11, 398_508), (12, 46), (13, 3_033_256)):
+            now[0] += 0.2
+            report(payload_id, size, size)
+        completions = [line for line in lines if "complete" in line]
+        self.assertEqual(len(completions), 3)
+        self.assertEqual(
+            [line.split(":")[1].split(" bytes")[0].strip() for line in completions],
+            ["398508/398508", "46/46", "3033256/3033256"],
+        )
+
+    def test_throttling_state_is_independent_per_payload(self):
+        report, lines, now = self._reporter()
+        now[0] += 0.1
+        report(1, PROGRESS_MIN_STEP_BYTES, 10 * PROGRESS_MIN_STEP_BYTES)
+        now[0] += 0.1
+        report(2, PROGRESS_MIN_STEP_BYTES, 10 * PROGRESS_MIN_STEP_BYTES)
+        # Both payloads cross the floor independently.
+        self.assertEqual(len(lines), 2)
+        self.assertTrue(all("Receiving file" in line for line in lines))
+
     def test_minimum_step_applies_to_moderate_files(self):
         report, lines, _ = self._reporter()
         total = 3 * PROGRESS_MIN_STEP_BYTES

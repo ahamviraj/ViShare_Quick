@@ -141,33 +141,37 @@ def make_progress_reporter(
 
     A 2 GiB file arrives in 512 KiB chunks. Printing every chunk (or every MiB)
     makes a multi-gigabyte run unreadable and slow, so updates are limited to
-    about twenty per payload with an 8 MiB floor, plus one completion line. The
-    peer's payload ID is deliberately not printed.
+    about twenty per payload with an 8 MiB floor, plus one completion line. A
+    multi-file Introduction reuses this reporter for every payload, so the
+    throttle and completion state are tracked per payload. The peer's payload
+    ID is deliberately not printed.
     """
-    first_at: float | None = None
-    last_reported = 0
-    finished = False
+    # payload_id -> [first_timestamp, last_reported_bytes, finished]
+    states: dict[int, list] = {}
 
     def report(payload_id: int, received: int, total: int) -> None:
-        del payload_id  # Never render a peer-supplied identifier.
-        nonlocal first_at, last_reported, finished
-        if finished:
+        # Never render the peer-supplied identifier; it is only a local key.
+        state = states.get(payload_id)
+        if state is None:
+            state = [None, 0, False]
+            states[payload_id] = state
+        if state[2]:
             return
-        if first_at is None:
-            first_at = clock()
+        if state[0] is None:
+            state[0] = clock()
         total = max(total, 1)
         if received < total:
             step = max(PROGRESS_MIN_STEP_BYTES, total // PROGRESS_STEP_FRACTION)
-            if received - last_reported < step:
+            if received - state[1] < step:
                 return
-            last_reported = received
+            state[1] = received
             printer(
                 f"Receiving file: {received}/{total} bytes "
                 f"({received * 100 // total}%)."
             )
             return
-        finished = True
-        elapsed = max(clock() - (first_at or 0.0), 0.0)
+        state[2] = True
+        elapsed = max(clock() - (state[0] or 0.0), 0.0)
         if elapsed >= 0.05:
             printer(
                 f"File transfer complete: {received}/{total} bytes in "
