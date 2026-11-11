@@ -82,14 +82,18 @@ class TestAdvertise(unittest.TestCase):
             )
 
     def test_capture_directory_rejects_parent_traversal(self):
-        with self.assertRaisesRegex(ValueError, "must not contain"):
-            run_advertiser(
-                duration_seconds=1,
-                ukey2_handshake=True,
-                paired_key_response=True,
-                capture_introduction=True,
-                capture_introduction_dir="captures\\..\\escape",
-            )
+        # Check both separator styles so the Windows-style path is also rejected
+        # when the test suite runs on POSIX, where "\" is not a separator.
+        for candidate in ("captures\\..\\escape", "captures/../escape"):
+            with self.subTest(candidate=candidate):
+                with self.assertRaisesRegex(ValueError, "must not contain"):
+                    run_advertiser(
+                        duration_seconds=1,
+                        ukey2_handshake=True,
+                        paired_key_response=True,
+                        capture_introduction=True,
+                        capture_introduction_dir=candidate,
+                    )
 
 
 class ProgressReporterTests(unittest.TestCase):

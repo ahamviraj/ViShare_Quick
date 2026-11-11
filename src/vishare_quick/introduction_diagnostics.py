@@ -18,7 +18,7 @@ import secrets
 import time
 import unicodedata
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Callable
 
 from vishare_quick.introduction import Introduction, IntroductionError, parse_introduction
@@ -201,7 +201,12 @@ def resolve_capture_directory(directory: str | os.PathLike[str] | None) -> Path:
     else:
         text = os.fspath(directory)
         candidate = DEFAULT_CAPTURE_DIRECTORY if not text.strip() else Path(text).expanduser()
-    if any(part == ".." for part in candidate.parts):
+    # Both separator styles are checked so a Windows-style path stays rejected
+    # when the same value is passed on a POSIX host, where "\" is not a
+    # separator and would otherwise become part of a single file name.
+    if any(part == ".." for part in candidate.parts) or any(
+        part == ".." for part in PureWindowsPath(candidate).parts
+    ):
         raise IntroductionCaptureError(
             "Introduction capture directory must not contain '..' components."
         )
