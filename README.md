@@ -1,6 +1,6 @@
 # ViShare_Quick
 
-**Package:** `alpha_0.4` (research build)\
+**Package:** `alpha_0.5` (research build)\
 **Target:** Windows / Linux · Python 3.10+
 
 ## Download
@@ -10,15 +10,17 @@ Prebuilt single-file executables are attached to the release:
 - Windows x64: `vishare-quick.exe`
 - Linux x64: `vishare-quick` (x86_64, glibc 2.35 or newer)
 
-Both are self-contained PyInstaller builds of the same CLI and use the same explicit PIN
-confirmation and consent prompts. They are command-line tools: run them from a terminal, not
-by double-clicking. A double-clicked Windows build only shows its help and waits for Enter.
+Both are self-contained PyInstaller builds of the same receiver and use the same explicit PIN
+confirmation and consent prompts. Launch the executable with no arguments (or double-click it on
+Windows) to open the local graphical interface. The command-line commands below remain available
+for scripted and diagnostic use.
 
 Linux downloads do not keep the executable bit, so set it once:
 
 ```bash
 chmod +x vishare-quick
 ./vishare-quick --version
+./vishare-quick ui
 ./vishare-quick advertise --ukey2-handshake --receive-files
 ```
 
@@ -26,30 +28,71 @@ Windows (PowerShell):
 
 ```powershell
 .\vishare-quick.exe --version
+.\vishare-quick.exe ui
 .\vishare-quick.exe advertise --ukey2-handshake --receive-files
 ```
 
-This build advances the experimental Alpha 0.3 mDNS advertiser with a read-only TCP frame
-inspector and a separate, opt-in UKEY2 plus plaintext Nearby connection-response experiment. It reads four-byte big-endian
-length-prefixed frames, enforces a 1 MiB limit,
-and recognizes documented Nearby Connections `OfflineFrame` v1 and UKEY2 outer envelopes. For
-UKEY2 ClientInit it reports schema-backed version, random length, cipher commitment metadata, and
-next-protocol validation without printing field values. Inspection is the default and sends no
-response. The experimental mode sends `SERVER_INIT`, verifies `CLIENT_FINISH`, sends and validates
-the plaintext `CONNECTION_RESPONSE` ACCEPT exchange, then closes before encrypted traffic unless
-the separate `--inspect-encrypted-frame` option is selected. That option reads one bounded frame,
-authenticates the exact SecureMessage bytes using Android-to-laptop receive keys derived from the
-UKEY2 result, then decrypts and validates the D2D sequence and inner Nearby framing. The additional
-`--paired-key-probe` mode checks the authenticated paired-key structure and waits for at most one
-more inbound frame. It sends no paired-key response because the available implementations do not
-provide trustworthy, identity-valid response material for this project. The separate
-`--paired-key-response` mode is an explicit no-credential fallback: after the
-authenticated Android offer and terminator it sends the protocol's random
-72-byte `signed_data` / 6-byte `secret_id_hash` placeholder
-`PairedKeyEncryptionFrame` plus `PairedKeyResultFrame.UNABLE`, then observes the
-peer result. The separate `--receive-files` mode adds an explicit PIN match
-confirmation, a local consent decision, and streaming reception of plain file
-payloads as described in [File reception](#file-reception---receive-files).
+This build packages the receiver as a local, multi-page interface while keeping the experimental CLI
+and protocol diagnostics. Launching the executable with no arguments opens the interface: choose
+**Receive files**, let the app advertise as a Quick Share endpoint, compare the 4-digit code shown on
+both devices, and approve the sanitized file list before anything is saved. Progress and the final
+result stay on screen, and a timeout, decline, cancellation, or disconnect fails closed and removes
+partial files.
+
+The command line remains available for scripted and diagnostic use, including bounded frame
+inspection, the opt-in P256_SHA512 UKEY2 handshake, encrypted-frame inspection, paired-key probes,
+and the consent-gated `--receive-files` receiver.
+
+## Highlights in `alpha_0.5`
+
+- **Local multi-page interface**: Home, Receive, PIN/consent, progress, result, Settings, and a Send
+  placeholder, using the bundled design and the Varela Round font.
+- **Receive files in the browser**: advertising starts from the Receive screen, and the result
+  screen offers the download folder, a retry on failure, and the activity log.
+- **Explicit human PIN check**: the derived 4-digit code is shown only while the comparison is
+  pending. The consent screen and logs never repeat it.
+- **Explicit consent**: the sanitized file list and total size are shown before acceptance. There is
+  no auto-accept.
+- **Fail-closed cleanup**: timeouts, declines, leaving the request screen, cancellation, and
+  disconnects reject the transfer and remove partial files.
+- **Functional Settings**: change the visible device name while idle, open the download folder, stop
+  receiving, or stop the interface.
+- **Offline and local-only**: the server binds to `127.0.0.1`, requires a per-run token, sends a
+  restrictive CSP, and ships every page, style, script, icon, and font.
+- **CLI unchanged**: existing commands and diagnostics still work, including `--receive-files`.
+
+## Local interface (`ui`)
+
+`vishare ui` starts the receiver and serves the interface at `http://127.0.0.1:<port>/`. The
+executable opens it automatically when launched without arguments; `--no-browser` suppresses the
+tab. The server binds only to loopback, uses a fresh random token for each run, sends a restrictive
+Content-Security-Policy, and never enables CORS. Every page, stylesheet, script, icon, and the
+Varela Round font is bundled, so the interface works without an internet connection.
+
+Pages:
+
+- **Home**: the visible device name, current receiver state, Receive files, Send files (under
+  construction), and Settings.
+- **Receive**: starts advertising when opened, shows whether the laptop is visible, and offers
+  **See Logs** and **Stop receiving**.
+- **Request**: the 4-digit PIN comparison, followed by the file list and explicit Accept/Decline.
+  The PIN is removed before consent is shown. Leaving the page declines the pending request.
+- **Receiving**: per-file progress and a Cancel action that confirms before removing partial files.
+- **Result**: completed, declined, failed, or cancelled state, saved file names and sizes, **See
+  Logs**, **Open in Files**, and retry or back navigation.
+- **Settings**: device name (while idle), download folder, **Stop receiving**, and **Stop
+  interface**.
+
+The activity panel is status text only; it never shows peer payload IDs, keys, or file contents.
+Closing the browser tab does not stop advertising: use **Settings → Stop interface** or press
+Ctrl+C in the terminal that launched the app.
+
+Useful options:
+
+```powershell
+python -m vishare_quick ui --download-dir D:\Incoming
+python -m vishare_quick ui --name "Desk PC" --port 8765 --no-browser
+```
 
 ## Commands
 
@@ -57,6 +100,9 @@ payloads as described in [File reception](#file-reception---receive-files).
 python -m vishare_quick --version
 python -m vishare_quick doctor
 python -m vishare_quick mdns-check --seconds 30
+python -m vishare_quick ui
+python -m vishare_quick ui --download-dir D:\Incoming
+python -m vishare_quick ui --no-browser --port 8765
 python -m vishare_quick advertise --name "ViShare Quick" --seconds 120
 python -m vishare_quick advertise --name "ViShare Quick" --seconds 120 --inspect-frames
 python -m vishare_quick advertise --name "ViShare Quick" --seconds 120 --ukey2-handshake
@@ -103,8 +149,9 @@ dumped, and bytes are not decoded as text.
 
 ## File reception (`--receive-files`)
 
-`--receive-files` requires `--ukey2-handshake` and implies the paired-key response stage. After the
-authenticated Introduction it:
+`--receive-files` requires `--ukey2-handshake` and implies the paired-key response stage. The local
+interface uses the same receiver and the same fail-closed rules. After the authenticated
+Introduction it:
 
 1. Derives the 4-digit code from the UKEY2 auth string and displays it as `Local code: NNNN`.
 2. Asks the user to compare that code with the PIN shown on Android and type `y` to confirm a match
@@ -186,8 +233,9 @@ The encrypted-frame diagnostic and its limitations are described in
 - `alpha_0.2`: passive Android Quick Share mDNS discovery
 - `alpha_0.3`: experimental mDNS advertisement; Android discovery observed on one Infinix XPad
 - `alpha_0.4`: bounded inspection, opt-in P256_SHA512 UKEY2, plaintext Nearby connection-response exchange, no-credential paired-key response (random-placeholder PKE + UNABLE), and a consent-gated streaming file receiver verified on one Android 14 XPad; peer identity verification and sending remain unimplemented
+- `alpha_0.5`: multi-page local interface for the same receiver (home, receive, PIN/consent, progress, result, settings), bundled offline assets, token-protected loopback server, explicit PIN and consent screens, progress/cancel/retry, activity log, saved-file result view, and functional settings; no protocol changes
 - Future milestone: verify multi-file and text-only shares across more devices and display formats
 - Later milestone: implement and validate sending
 
-Released as `alpha_0.4`. File reception has been demonstrated on one trusted local network; it is
+Released as `alpha_0.5`. File reception has been demonstrated on one trusted local network; it is
 not a claim of peer identity verification or broad interoperability.

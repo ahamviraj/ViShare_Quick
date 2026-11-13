@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="vishare-token" content="__VISHARE_TOKEN__" />
+    <meta name="vishare-version" content="__VISHARE_VERSION__" />
+    <title>Settings - ViShare Quick</title>
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="/assets/vishare-quick-icon-squircle.svg"
+    />
+    <link rel="stylesheet" href="/styles/common.css" />
+    <link rel="stylesheet" href="/styles/settings.css" />
+  </head>
+  <body data-page="settings">
+    <p class="sr-only" id="status" role="status" aria-live="polite"></p>
+
+    <button class="back-btn" type="button" data-href="index.html" aria-label="Back to main">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke-width="2.2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M19 12H5M12 19l-7-7 7-7" />
+      </svg>
+      <span>Main</span>
+    </button>
+
+    <h1 class="mainText">ViShare Quick</h1>
+
+    <p class="secText subtext">You'll appear as</p>
+    <form class="settings-card section" id="nameForm">
+      <label class="settings-label" for="deviceNameInput">Device name</label>
+      <div class="settings-row">
+        <input
+          class="settings-input"
+          id="deviceNameInput"
+          data-name-input
+          type="text"
+          maxlength="64"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button class="accept-button" type="submit" data-name-save>Save</button>
+      </div>
+      <p class="settings-hint mainText" data-name-hint>
+        Up to 64 characters. Nearby devices see this name.
+      </p>
+    </form>
+
+    <p class="secText subtext">Downloads</p>
+    <div class="settings-card section">
+      <span class="settings-value mainText" data-download-dir>Downloads</span>
+      <div class="action-buttons">
+        <button class="open-button" type="button" data-action="open-downloads">
+          Open folder
+        </button>
+      </div>
+    </div>
+
+    <p class="secText subtext">This interface</p>
+    <div class="settings-card section">
+      <span class="settings-value mainText"
+        >Local only · <span data-version>alpha</span></span
+      >
+      <div class="action-buttons">
+        <button
+          class="stop-button"
+          type="button"
+          data-action="stop-receive"
+          data-stop-receive
+        >
+          Stop receiving
+        </button>
+        <button class="decline-button" type="button" data-action="shutdown">
+          Stop interface
+        </button>
+      </div>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

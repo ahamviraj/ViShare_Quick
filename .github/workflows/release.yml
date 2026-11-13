@@ -42,7 +42,7 @@ jobs:
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
       - name: Package CLI
-        run: pyinstaller --clean --noconfirm --onefile --name vishare-quick --paths src src/vishare_quick/__main__.py
+        run: pyinstaller --clean --noconfirm --onefile --name vishare-quick --paths src --collect-data vishare_quick.ui src/vishare_quick/__main__.py
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:

@@ -1,0 +1,138 @@
+.sender-info {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+  border-radius: var(--radius);
+  margin-bottom: 30px;
+}
+
+.sender-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  align-self: flex-start;
+}
+
+.sender-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+span.sender-name {
+  margin-top: 10px;
+  font-size: 15px;
+  font-weight: bold;
+}
+
+.request-text {
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+.sender-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background-color: var(--accent);
+  width: 45px;
+  height: 45px;
+  border-radius: 50%;
+}
+
+.sender-icon img {
+  width: 25px;
+  height: 25px;
+}
+
+.result-message {
+  align-self: flex-start;
+  margin: 0;
+  font-size: 11px;
+  opacity: 0.78;
+}
+
+.file-info {
+  background-color: var(--bg);
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  height: 60px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: var(--radius);
+}
+
+.file-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 70px;
+  height: 50px;
+  background-color: var(--accent-deep);
+  border-radius: 10px;
+}
+
+.file-icon img {
+  width: 25px;
+  height: 25px;
+}
+
+.file-desc {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.file-info .file-name {
+  margin-left: 10px;
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.progress-ring {
+  --p: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  flex-shrink: 0;
+  border: 0 solid var(--accent);
+  border-radius: 50%;
+  padding: 3px;
+  background: conic-gradient(
+    var(--accent) calc(var(--p) * 1%),
+    transparent 0
+  ) content-box;
+}
+
+.progress-ring.is-attention {
+  background: conic-gradient(var(--danger) 100%, transparent 0) content-box;
+}
+
+.progress-ring .result-symbol {
+  color: var(--bg);
+  font-size: 12px;
+  font-weight: bold;
+  line-height: 1;
+}
+
+.result-files {
+  margin-top: 4px;
+}
+
+.action-buttons {
+  margin-top: 20px;
+}

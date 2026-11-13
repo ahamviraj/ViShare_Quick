@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="vishare-token" content="__VISHARE_TOKEN__" />
+    <meta name="vishare-version" content="__VISHARE_VERSION__" />
+    <title>ViShare Quick</title>
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="/assets/vishare-quick-icon-squircle.svg"
+    />
+    <link rel="stylesheet" href="/styles/common.css" />
+    <link rel="stylesheet" href="/styles/home.css" />
+  </head>
+  <body data-page="home">
+    <p class="sr-only" id="status" role="status" aria-live="polite"></p>
+
+    <div class="settings">
+      <button
+        class="settings-btn"
+        type="button"
+        data-href="settings.html"
+        aria-label="Settings"
+      >
+        <img src="/assets/settings.png" alt="" />
+        <span>Settings</span>
+      </button>
+    </div>
+
+    <h1 class="mainText">ViShare Quick</h1>
+
+    <p class="secText subtext">You'll appear as</p>
+    <div class="user-info section">
+      <div class="myIcon">
+        <img src="/assets/laptop.png" alt="" />
+      </div>
+      <div class="user-desc">
+        <span class="username mainText" data-device-name>ViShare Quick</span>
+        <span class="status mainText" data-device-status>Receiver is off</span>
+      </div>
+    </div>
+
+    <p class="secText subtext">What do you want to do?</p>
+    <div class="action-info section">
+      <div
+        class="send"
+        role="button"
+        tabindex="0"
+        data-href="under-construction.html"
+      >
+        <img src="/assets/send.png" alt="Send Icon" class="file-avatar" />
+        <span class="action-name mainText">Send files</span>
+      </div>
+      <div
+        class="receive"
+        id="receiveCard"
+        role="button"
+        tabindex="0"
+        data-action="open-receive"
+      >
+        <img src="/assets/receive.png" alt="Receive Icon" class="file-avatar" />
+        <span class="action-name mainText">Receive files</span>
+      </div>
+    </div>
+
+    <p class="secText subtext home-footnote">
+      Local only · <span data-version>alpha</span>
+    </p>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

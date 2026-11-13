@@ -1,4 +1,4 @@
-"""Command-line interface for ViShare_Quick alpha_0.4."""
+"""Command-line interface for ViShare_Quick alpha_0.5."""
 
 import argparse
 import sys
@@ -33,6 +33,26 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     mdns.add_argument("--seconds", type=float, default=8.0, help="browse duration (default: 8 seconds)")
+
+    ui = subparsers.add_parser(
+        "ui",
+        help="open the local graphical receiver interface in a browser",
+        description=(
+            "Start the loopback-only receiver interface. It advertises the same "
+            "Quick Share endpoint as 'advertise --receive-files' and requires the "
+            "same explicit PIN comparison and file consent. The server binds to "
+            "127.0.0.1 and uses a per-run token; it never accepts a transfer "
+            "automatically."
+        ),
+    )
+    ui.add_argument("--port", type=int, default=0, help="local TCP port (0 chooses an available port)")
+    ui.add_argument("--no-browser", action="store_true", help="do not open a browser window")
+    ui.add_argument(
+        "--download-dir",
+        metavar="DIR",
+        help="destination directory for received files (default: ~/Downloads)",
+    )
+    ui.add_argument("--name", default="ViShare Quick", help="visible device name")
 
     advertise = subparsers.add_parser(
         "advertise",
@@ -155,6 +175,24 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{label}: {value}")
         print("\nThis research build does not yet implement Quick Share discovery or file transfer.")
         return 0
+
+    if args.command == "ui":
+        if args.port < 0 or args.port > 65535:
+            parser.error("--port must be between 0 and 65535")
+        if not args.name.strip():
+            parser.error("--name cannot be empty")
+        try:
+            from vishare_quick.ui_server import run_ui
+
+            return run_ui(
+                port=args.port,
+                download_dir=args.download_dir,
+                device_name=args.name.strip(),
+                open_browser=not args.no_browser,
+            )
+        except (RuntimeError, ValueError, OSError) as exc:
+            print(f"Interface failed to start: {exc}", file=sys.stderr)
+            return 2
 
     if args.command == "advertise":
         if args.seconds <= 0 or args.seconds > 3600:

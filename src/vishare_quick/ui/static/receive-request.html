@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="vishare-token" content="__VISHARE_TOKEN__" />
+    <meta name="vishare-version" content="__VISHARE_VERSION__" />
+    <title>Receive request - ViShare Quick</title>
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="/assets/vishare-quick-icon-squircle.svg"
+    />
+    <link rel="stylesheet" href="/styles/common.css" />
+    <link rel="stylesheet" href="/styles/receive-request.css" />
+  </head>
+  <body data-page="request">
+    <p class="sr-only" id="status" role="status" aria-live="polite"></p>
+
+    <button
+      class="back-btn"
+      type="button"
+      data-action="leave-request"
+      aria-label="Leave and decline this request"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke-width="2.2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M19 12H5M12 19l-7-7 7-7" />
+      </svg>
+      <span>Main</span>
+    </button>
+
+    <h1 class="mainText">ViShare Quick</h1>
+
+    <p class="secText subtext">You'll appear as</p>
+    <div class="user-info section">
+      <div class="myIcon">
+        <img src="/assets/laptop.png" alt="" />
+      </div>
+      <div class="user-desc">
+        <span class="username mainText" data-device-name>ViShare Quick</span>
+        <span class="status mainText" data-device-status
+          >Visible to Everyone on this network</span
+        >
+      </div>
+    </div>
+
+    <p class="secText subtext">Sharing with you</p>
+    <div class="sender-info section">
+      <div class="sender-head">
+        <div class="sender-icon">
+          <img src="/assets/mobile.png" alt="" />
+        </div>
+        <div class="sender-text">
+          <span class="sender-name mainText" data-sender-name
+            >Incoming request</span
+          >
+          <span class="request-text mainText" data-request-text
+            >Accept request?</span
+          >
+        </div>
+      </div>
+
+      <div class="file-info" id="requestCard">
+        <div class="file-icon">
+          <img src="/assets/file.png" alt="File Icon" class="file-avatar" />
+        </div>
+        <div class="file-desc">
+          <span class="file-name mainText" data-request-summary
+            >Preparing the file list…</span
+          >
+        </div>
+        <div class="file-pin" data-pin-wrap hidden>
+          <span class="file-pin-text mainText" data-pin>PIN: ----</span>
+        </div>
+      </div>
+
+      <p class="request-note mainText" data-request-note hidden></p>
+      <ul class="transfer-list request-files" data-request-files hidden></ul>
+
+      <div class="action-buttons" data-buttons>
+        <button class="decline-button" type="button" data-action="request-decline">
+          Decline
+        </button>
+        <button class="accept-button" type="button" data-action="request-accept">
+          Accept
+        </button>
+      </div>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

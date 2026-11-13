@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="vishare-token" content="__VISHARE_TOKEN__" />
+    <meta name="vishare-version" content="__VISHARE_VERSION__" />
+    <title>Receive - ViShare Quick</title>
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="/assets/vishare-quick-icon-squircle.svg"
+    />
+    <link rel="stylesheet" href="/styles/common.css" />
+    <link rel="stylesheet" href="/styles/receive-main.css" />
+  </head>
+  <body data-page="receive">
+    <p class="sr-only" id="status" role="status" aria-live="polite"></p>
+
+    <button class="back-btn" type="button" data-href="index.html" aria-label="Back to main">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke-width="2.2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M19 12H5M12 19l-7-7 7-7" />
+      </svg>
+      <span>Main</span>
+    </button>
+
+    <h1 class="mainText">ViShare Quick</h1>
+
+    <p class="secText subtext">You'll appear as</p>
+    <div class="user-info section">
+      <div class="myIcon">
+        <img src="/assets/laptop.png" alt="" />
+      </div>
+      <div class="user-desc">
+        <span class="username mainText" data-device-name>ViShare Quick</span>
+        <span class="status mainText" data-device-status
+          >Visible to Everyone on this network</span
+        >
+      </div>
+    </div>
+
+    <p class="secText subtext">Sharing with you</p>
+    <div class="file-info section">
+      <svg
+        class="wait-logo"
+        viewBox="12 12 96 96"
+        xmlns="http://www.w3.org/2000/svg"
+        role="img"
+        aria-label="Waiting to receive"
+      >
+        <defs>
+          <radialGradient
+            id="windFadeGrad"
+            cx="60"
+            cy="60"
+            r="48"
+            gradientUnits="userSpaceOnUse"
+          >
+            <stop offset="0.55" stop-color="#fff" />
+            <stop offset="1" stop-color="#000" />
+          </radialGradient>
+          <mask
+            id="windFade"
+            maskUnits="userSpaceOnUse"
+            x="12"
+            y="12"
+            width="96"
+            height="96"
+          >
+            <rect x="12" y="12" width="96" height="96" fill="url(#windFadeGrad)" />
+          </mask>
+        </defs>
+
+        <g
+          mask="url(#windFade)"
+          stroke="#D9E2FF"
+          stroke-width="3"
+          stroke-linecap="round"
+        >
+          <line x1="0" y1="20" x2="28" y2="20" opacity="0.30">
+            <animateTransform
+              attributeName="transform"
+              type="translate"
+              from="-40 0"
+              to="130 0"
+              dur="2.4s"
+              begin="-0.4s"
+              repeatCount="indefinite"
+            />
+          </line>
+          <line x1="0" y1="36" x2="18" y2="36" opacity="0.22">
+            <animateTransform
+              attributeName="transform"
+              type="translate"
+              from="-40 0"
+              to="130 0"
+              dur="1.8s"
+              begin="-1.2s"
+              repeatCount="indefinite"
+            />
+          </line>
+          <line x1="0" y1="52" x2="34" y2="52" opacity="0.18">
+            <animateTransform
+              attributeName="transform"
+              type="translate"
+              from="-40 0"
+              to="130 0"
+              dur="2.8s"
+              begin="-2s"
+              repeatCount="indefinite"
+            />
+          </line>
+          <line x1="0" y1="68" x2="22" y2="68" opacity="0.28">
+            <animateTransform
+              attributeName="transform"
+              type="translate"
+              from="-40 0"
+              to="130 0"
+              dur="2s"
+              begin="-0.8s"
+              repeatCount="indefinite"
+            />
+          </line>
+          <line x1="0" y1="84" x2="30" y2="84" opacity="0.20">
+            <animateTransform
+              attributeName="transform"
+              type="translate"
+              from="-40 0"
+              to="130 0"
+              dur="2.6s"
+              begin="-1.6s"
+              repeatCount="indefinite"
+            />
+          </line>
+          <line x1="0" y1="100" x2="16" y2="100" opacity="0.30">
+            <animateTransform
+              attributeName="transform"
+              type="translate"
+              from="-40 0"
+              to="130 0"
+              dur="1.6s"
+              begin="-0.2s"
+              repeatCount="indefinite"
+            />
+          </line>
+        </g>
+
+        <path
+          d="M32 36 L60 84 L88 36"
+          fill="none"
+          stroke="#D9E2FF"
+          stroke-width="15"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+
+        <circle
+          cx="88"
+          cy="36"
+          r="4"
+          fill="none"
+          stroke="#FFFFFF"
+          stroke-width="3"
+          opacity="0"
+        >
+          <animate
+            attributeName="r"
+            dur="1.8s"
+            repeatCount="indefinite"
+            keyTimes="0;0.69;0.7;1"
+            values="4;4;4;18"
+          />
+          <animate
+            attributeName="opacity"
+            dur="1.8s"
+            repeatCount="indefinite"
+            keyTimes="0;0.69;0.7;1"
+            values="0;0;0.8;0"
+          />
+        </circle>
+
+        <circle r="4" fill="#314577" opacity="0">
+          <animateMotion
+            dur="1.8s"
+            begin="0.12s"
+            repeatCount="indefinite"
+            calcMode="spline"
+            keyTimes="0;1"
+            keySplines="0.45 0 0.2 1"
+            path="M32 36 L60 84 L88 36"
+          />
+          <animate
+            attributeName="opacity"
+            dur="1.8s"
+            begin="0.12s"
+            repeatCount="indefinite"
+            keyTimes="0;0.1;0.85;1"
+            values="0;0.9;0.9;0"
+          />
+        </circle>
+
+        <circle r="6" fill="#1e1e26" opacity="0">
+          <animateMotion
+            dur="1.8s"
+            repeatCount="indefinite"
+            calcMode="spline"
+            keyTimes="0;1"
+            keySplines="0.45 0 0.2 1"
+            path="M32 36 L60 84 L88 36"
+          />
+          <animate
+            attributeName="opacity"
+            dur="1.8s"
+            repeatCount="indefinite"
+            keyTimes="0;0.1;0.85;1"
+            values="0;1;1;0"
+          />
+        </circle>
+      </svg>
+      <span class="wait mainText" data-receive-state>Ready to receive</span>
+    </div>
+
+    <div class="receive-actions">
+      <button class="logs-button" type="button" data-action="open-logs">
+        See Logs
+      </button>
+      <button class="stop-button" type="button" data-action="stop-receive">
+        Stop receiving
+      </button>
+    </div>
+
+    <div class="activity-scrim" data-action="close-logs" data-logs-scrim hidden></div>
+    <aside
+      class="activity-panel"
+      data-logs
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="activityTitle"
+      hidden
+    >
+      <div class="activity-head">
+        <h2 class="mainText" id="activityTitle">Activity</h2>
+        <button
+          class="activity-close"
+          type="button"
+          data-action="close-logs"
+          aria-label="Close activity"
+        >
+          ×
+        </button>
+      </div>
+      <p class="activity-empty" data-activity-empty>No activity yet.</p>
+      <ul class="activity-list" data-activity-list></ul>
+    </aside>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

@@ -1,8 +1,18 @@
-"""Allow running with: python -m vishare_quick."""
+"""Allow running with: python -m vishare_quick.
+
+A frozen executable launched without arguments opens the local receiver
+interface, so a file-manager double-click does something useful instead of
+printing help and closing the console.
+"""
 
 import sys
 
 from vishare_quick.cli import main
+
+
+def should_open_ui(argv: list[str], *, frozen: bool) -> bool:
+    """True for the file-manager launch of a frozen build."""
+    return frozen and len(argv) == 1
 
 
 def pause_if_double_clicked(
@@ -13,10 +23,10 @@ def pause_if_double_clicked(
 ) -> bool:
     """Keep a double-clicked executable's console open after printing help.
 
-    A frozen one-file build launched from a file manager has no arguments, so
-    the CLI prints its help and exits, closing the new console window before it
-    can be read. Pause only for that case: frozen, no arguments, and a real
-    terminal on both ends, so piped and scripted invocations never block.
+    This is retained for callers that intentionally run the help path without
+    the graphical interface. Pause only when frozen, no arguments are present,
+    and a real terminal is attached on both ends, so piped and scripted
+    invocations never block.
     """
     if not (frozen and len(argv) == 1 and interactive):
         return False
@@ -40,10 +50,13 @@ def _is_interactive() -> bool:
 
 
 if __name__ == "__main__":
-    exit_code = main()
-    pause_if_double_clicked(
-        sys.argv,
-        frozen=bool(getattr(sys, "frozen", False)),
-        interactive=_is_interactive(),
-    )
+    frozen = bool(getattr(sys, "frozen", False))
+    opens_ui = should_open_ui(sys.argv, frozen=frozen)
+    exit_code = main(["ui"] if opens_ui else None)
+    if not opens_ui:
+        pause_if_double_clicked(
+            sys.argv,
+            frozen=frozen,
+            interactive=_is_interactive(),
+        )
     raise SystemExit(exit_code)

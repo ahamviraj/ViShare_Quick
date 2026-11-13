@@ -1,0 +1,54 @@
+.settings-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: var(--radius);
+  margin-bottom: 26px;
+}
+
+.settings-label {
+  color: var(--accent);
+  font-size: 11px;
+}
+
+.settings-input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid #d9e2ff40;
+  border-radius: 10px;
+  background-color: var(--bg);
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.settings-input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.settings-input:disabled {
+  opacity: 0.55;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-value {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.settings-hint {
+  margin: 0;
+  font-size: 10px;
+  opacity: 0.62;
+}
+
+.settings-card .action-buttons {
+  margin-top: 0;
+}

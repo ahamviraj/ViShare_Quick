@@ -1,6 +1,6 @@
 import unittest
 from io import StringIO
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from unittest.mock import patch
 
 from vishare_quick import __version__
@@ -10,12 +10,12 @@ from vishare_quick.diagnostics import run_diagnostics
 
 class TestViShareQuickCLI(unittest.TestCase):
     def test_version(self):
-        self.assertEqual(__version__, "alpha_0.4")
+        self.assertEqual(__version__, "alpha_0.5")
 
     def test_diagnostics_include_required_fields(self):
         diagnostics = dict(run_diagnostics())
         self.assertEqual(diagnostics["Application"], "ViShare_Quick")
-        self.assertEqual(diagnostics["Version"], "alpha_0.4")
+        self.assertEqual(diagnostics["Version"], "alpha_0.5")
         self.assertIn("Python version", diagnostics)
         self.assertIn("OS family", diagnostics)
 
@@ -52,6 +52,46 @@ class TestViShareQuickCLI(unittest.TestCase):
         self.assertIn("doctor", help_text)
         self.assertIn("mdns-check", help_text)
         self.assertIn("advertise", help_text)
+        self.assertIn("ui", help_text)
+
+    @patch("vishare_quick.ui_server.run_ui")
+    def test_ui_command_forwards_options(self, mocked_run_ui):
+        mocked_run_ui.return_value = 0
+        result = main(
+            [
+                "ui",
+                "--no-browser",
+                "--port",
+                "8765",
+                "--download-dir",
+                "D:\\Incoming",
+                "--name",
+                "Desk PC",
+            ]
+        )
+        self.assertEqual(result, 0)
+        mocked_run_ui.assert_called_once_with(
+            port=8765,
+            download_dir="D:\\Incoming",
+            device_name="Desk PC",
+            open_browser=False,
+        )
+
+    @patch("vishare_quick.ui_server.run_ui", side_effect=OSError("port busy"))
+    def test_ui_start_failure_returns_two(self, mocked_run_ui):
+        error = StringIO()
+        with redirect_stderr(error):
+            result = main(["ui", "--no-browser"])
+        self.assertEqual(result, 2)
+        self.assertIn("port busy", error.getvalue())
+        mocked_run_ui.assert_called_once()
+
+    def test_frozen_no_argument_launch_selects_the_interface(self):
+        from vishare_quick.__main__ import should_open_ui
+
+        self.assertTrue(should_open_ui(["vishare-quick"], frozen=True))
+        self.assertFalse(should_open_ui(["vishare-quick", "ui"], frozen=True))
+        self.assertFalse(should_open_ui(["vishare-quick"], frozen=False))
 
     def test_advertise_help_describes_opt_in_ukey2_responder(self):
         from vishare_quick.cli import build_parser

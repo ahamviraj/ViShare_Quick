@@ -3,6 +3,8 @@ import unittest
 from vishare_quick.advertise import (
     PROGRESS_MIN_STEP_BYTES,
     SERVICE_TYPE,
+    AdvertiserControl,
+    _emit,
     _human_byte_rate,
     make_endpoint_info,
     make_instance_name,
@@ -94,6 +96,47 @@ class TestAdvertise(unittest.TestCase):
                         capture_introduction=True,
                         capture_introduction_dir=candidate,
                     )
+
+    def test_invalid_duration_still_rejected(self):
+        for duration in (0, -1, 3601):
+            with self.subTest(duration=duration):
+                with self.assertRaisesRegex(ValueError, "Duration"):
+                    run_advertiser(duration_seconds=duration)
+
+
+class AdvertiserControlTests(unittest.TestCase):
+    def test_stop_event_and_active_cancellation(self):
+        control = AdvertiserControl()
+        cancelled = []
+        control.set_active_connection(lambda: cancelled.append("cancel"))
+        control.cancel_active_connection()
+        self.assertEqual(cancelled, ["cancel"])
+        control.request_stop()
+        self.assertTrue(control.stop_event.is_set())
+
+        control.set_active_connection(None)
+        control.cancel_active_connection()
+        self.assertEqual(cancelled, ["cancel"])
+
+    def test_cancellation_ignores_socket_errors(self):
+        control = AdvertiserControl()
+
+        def closed_socket():
+            raise OSError("already closed")
+
+        control.set_active_connection(closed_socket)
+        control.cancel_active_connection()
+
+    def test_observer_faults_never_escape(self):
+        events = []
+        _emit(events.append, {"type": "ready"})
+        self.assertEqual(events, [{"type": "ready"}])
+
+        def broken_observer(event):
+            raise RuntimeError("presentation bug")
+
+        _emit(broken_observer, {"type": "ready"})
+        _emit(None, {"type": "ready"})
 
 
 class ProgressReporterTests(unittest.TestCase):

@@ -12,6 +12,7 @@ import os
 import secrets
 import socket
 import string
+import threading
 import time
 from pathlib import Path
 from typing import Any, Callable
@@ -203,6 +204,54 @@ def make_endpoint_info(device_name: str) -> bytes:
     return bytes([flags]) + metadata + bytes([len(name_bytes)]) + name_bytes
 
 
+def _emit(
+    observer: Callable[[dict[str, Any]], None] | None,
+    event: dict[str, Any],
+) -> None:
+    """Deliver a lifecycle event without letting a UI fault affect the protocol."""
+    if observer is None:
+        return
+    try:
+        observer(event)
+    except Exception:
+        # A presentation-only observer must never break a live session.
+        pass
+
+
+class AdvertiserControl:
+    """Thread-safe stop/cancel handle for a running advertiser.
+
+    The local UI runs the advertiser on a worker thread. ``request_stop`` ends
+    the accept loop; ``cancel_active_connection`` closes the socket carrying an
+    in-flight session so the receiver's cleanup path removes partial files.
+    Neither method changes what is sent to the peer beyond that cleanup.
+    """
+
+    def __init__(self) -> None:
+        self.stop_event = threading.Event()
+        self._lock = threading.Lock()
+        self._cancel_active: Callable[[], None] | None = None
+
+    def request_stop(self) -> None:
+        self.stop_event.set()
+
+    def set_active_connection(
+        self, cancel: Callable[[], None] | None
+    ) -> None:
+        with self._lock:
+            self._cancel_active = cancel
+
+    def cancel_active_connection(self) -> None:
+        with self._lock:
+            cancel = self._cancel_active
+        if cancel is None:
+            return
+        try:
+            cancel()
+        except OSError:
+            pass
+
+
 def _get_local_ipv4() -> str:
     """Best-effort local IPv4 address selection for the zeroconf record."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -220,7 +269,7 @@ def _get_local_ipv4() -> str:
 def run_advertiser(
     device_name: str = "ViShare Quick",
     port: int = 0,
-    duration_seconds: float = 120.0,
+    duration_seconds: float | None = 120.0,
     inspect_frames: bool = False,
     dump_first_frame_hex: bool = False,
     dump_frame_hex_index: int | None = None,
@@ -235,8 +284,16 @@ def run_advertiser(
     capture_introduction: bool = False,
     capture_introduction_dir: str | None = None,
     log_introduction_filenames: bool = False,
+    progress: Callable[[int, int, int], None] | None = None,
+    control: AdvertiserControl | None = None,
+    observer: Callable[[dict[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
-    """Advertise an endpoint; inspection is read-only, UKEY2 response is opt-in."""
+    """Advertise an endpoint; inspection is read-only, UKEY2 response is opt-in.
+
+    ``duration_seconds=None`` runs until ``control.request_stop()`` is called.
+    ``observer`` receives presentation-only lifecycle dictionaries; it never
+    receives peer payload IDs, key material, or payload bytes.
+    """
     try:
         from zeroconf import ServiceInfo, Zeroconf
     except ImportError as exc:
@@ -249,7 +306,9 @@ def run_advertiser(
         raise ValueError("Device name cannot be empty.")
     if port < 0 or port > 65535:
         raise ValueError("Port must be between 0 and 65535.")
-    if duration_seconds <= 0 or duration_seconds > 3600:
+    if duration_seconds is not None and (
+        duration_seconds <= 0 or duration_seconds > 3600
+    ):
         raise ValueError("Duration must be greater than 0 and at most 3600 seconds.")
     if dump_frame_hex_index is not None and dump_frame_hex_index < 1:
         raise ValueError("Frame hex index must be at least 1.")
@@ -320,13 +379,39 @@ def run_advertiser(
     started = time.monotonic()
     try:
         zc.register_service(info)
+        _emit(
+            observer,
+            {
+                "type": "ready",
+                "instance_name": instance_name,
+                "endpoint_id": endpoint_id,
+                "local_ip": local_ip,
+                "port": actual_port,
+                "device_name": device_name,
+            },
+        )
         try:
-            while time.monotonic() - started < duration_seconds:
+            while True:
+                if control is not None and control.stop_event.is_set():
+                    break
+                if (
+                    duration_seconds is not None
+                    and time.monotonic() - started >= duration_seconds
+                ):
+                    break
                 try:
                     conn, peer = server.accept()
                 except socket.timeout:
                     continue
                 accepted += 1
+                if control is not None:
+                    control.set_active_connection(
+                        lambda active=conn: active.shutdown(socket.SHUT_RDWR)
+                    )
+                _emit(
+                    observer,
+                    {"type": "connection", "count": accepted},
+                )
                 connection_timeline = ProtocolTimeline() if protocol_timeline else None
                 close_reason = "local-close"
                 try:
@@ -442,6 +527,8 @@ def run_advertiser(
                                        "waiting for one encrypted frame for read-only inspection." if inspect_encrypted_frame else
                                        "closing before encrypted traffic (not implemented).")
                                 )
+                                if response_status == "ACCEPT":
+                                    _emit(observer, {"type": "authenticated"})
                                 if paired_key_probe:
                                     try:
                                         receive_keys = derive_client_to_server_receive_keys(secrets.next_secret)
@@ -692,7 +779,7 @@ def run_advertiser(
                                                 )
                                             else:
                                                 conn.settimeout(30.0)
-                                                report_progress = make_progress_reporter()
+                                                report_progress = progress or make_progress_reporter()
 
                                                 try:
                                                     session = run_receive_session(
@@ -726,6 +813,18 @@ def run_advertiser(
                                                         else "error"
                                                     )
                                                     print(f"Sharing session stopped: {exc}")
+                                                    _emit(
+                                                        observer,
+                                                        {
+                                                            "type": "session-failed",
+                                                            "stage": "sharing session",
+                                                            "category": getattr(
+                                                                exc,
+                                                                "error_category",
+                                                                "protocol-error",
+                                                            ),
+                                                        },
+                                                    )
                                                 else:
                                                     print(
                                                         f"Sharing session status: {session.status}; "
@@ -740,6 +839,23 @@ def run_advertiser(
                                                             f"sha256={received_file.sha256}; "
                                                             f"integrity={received_file.integrity}."
                                                         )
+                                                    _emit(
+                                                        observer,
+                                                        {
+                                                            "type": "session",
+                                                            "status": session.status,
+                                                            "pin_verified": session.pin_verified,
+                                                            "consent": session.consent,
+                                                            "files": [
+                                                                {
+                                                                    "name": item.name,
+                                                                    "saved_name": item.path.name,
+                                                                    "size": item.size,
+                                                                }
+                                                                for item in session.files
+                                                            ],
+                                                        },
+                                                    )
                                                     close_reason = session.status
                             except (HandshakeError, FrameError, socket.timeout, OSError) as exc:
                                 close_reason = (
@@ -750,6 +866,16 @@ def run_advertiser(
                                     else "error"
                                 )
                                 print(f"UKEY2/connection exchange stopped: {exc}")
+                                _emit(
+                                    observer,
+                                    {
+                                        "type": "error",
+                                        "stage": "ukey2/connection exchange",
+                                        "category": getattr(
+                                            exc, "error_category", "protocol-error"
+                                        ),
+                                    },
+                                )
                         else:
                             while True:
                                 try:
@@ -775,15 +901,29 @@ def run_advertiser(
                         except socket.timeout:
                             pass
                 finally:
+                    if control is not None:
+                        control.set_active_connection(None)
                     if connection_timeline is not None:
                         connection_timeline.tcp_closed(reason=close_reason)
                     conn.close()
+                    _emit(
+                        observer,
+                        {"type": "closed", "reason": close_reason},
+                    )
         finally:
             zc.unregister_service(info)
     finally:
         zc.close()
         server.close()
 
+    _emit(
+        observer,
+        {
+            "type": "stopped",
+            "tcp_connections": accepted,
+            "duration_seconds": time.monotonic() - started,
+        },
+    )
     return {
         "instance_name": instance_name,
         "endpoint_id": endpoint_id,
