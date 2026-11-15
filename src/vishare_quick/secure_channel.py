@@ -197,6 +197,20 @@ def derive_server_to_client_send_keys(next_secret: bytes) -> SendKeys:
     return SendKeys(*_derive_securemessage_keys(next_secret, b"server"))
 
 
+def derive_client_to_server_send_keys(next_secret: bytes) -> SendKeys:
+    """Derive only client -> server send keys for the sender role.
+
+    The sender is the UKEY2 client, so it must encrypt with the D2D ``client``
+    key even though a laptop normally acts as the server in this project.
+    """
+    return SendKeys(*_derive_securemessage_keys(next_secret, b"client"))
+
+
+def derive_server_to_client_receive_keys(next_secret: bytes) -> ReceiveKeys:
+    """Derive only server -> client receive keys for the sender role."""
+    return ReceiveKeys(*_derive_securemessage_keys(next_secret, b"server"))
+
+
 def _parse(data: bytes, label: str) -> dict[int, list[_Field]]:
     if len(data) > DEFAULT_MAX_FRAME_LENGTH:
         raise SecureChannelError(f"{label} exceeds the parser size limit.")

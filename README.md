@@ -1,6 +1,6 @@
 # ViShare_Quick
 
-**Package:** `alpha_0.5` (research build)\
+**Package:** `alpha_0.6` (research build)\
 **Target:** Windows / Linux · Python 3.10+
 
 ## Download
@@ -41,7 +41,24 @@ partial files.
 
 The command line remains available for scripted and diagnostic use, including bounded frame
 inspection, the opt-in P256_SHA512 UKEY2 handshake, encrypted-frame inspection, paired-key probes,
-and the consent-gated `--receive-files` receiver.
+the consent-gated `--receive-files` receiver, and the `peers`/`send` Quick Share sender.
+
+## Highlights in `alpha_0.6`
+
+- **Send files from the CLI**: `vishare peers` lists visible receivers, and `vishare send FILE...`
+  discovers one, completes the UKEY2 handshake, offers the files, and streams them after the
+  receiver accepts.
+- **Explicit human PIN check before any file byte**: the sender prints its 4-digit code and sends
+  nothing until you type `yes` after comparing it with the receiving device's screen.
+- **Local-only sender**: it connects directly to the advertised LAN address, uses no Google account,
+  cloud relay, or internet service, and puts only basenames on the wire.
+- **Regular files only**: symlinks, directories, special files, empty files, and files that change
+  size or modification time are rejected instead of being sent.
+- **Fail-closed sender**: cancellation, timeout, disconnect, rejection, or a file that changes closes
+  the connection and leaves no partial sender state.
+- **Verified on device**: single-file, multi-file, chunked 1.2 MiB, and spaced-name transfers were
+  received by an Android 14 XPad with matching PINs. The Send page remains a placeholder in this
+  build; the sender is CLI-only for now.
 
 ## Highlights in `alpha_0.5`
 
@@ -113,6 +130,10 @@ python -m vishare_quick advertise --name "ViShare Quick" --seconds 120 --ukey2-h
 python -m vishare_quick advertise --name "ViShare Quick" --seconds 120 --ukey2-handshake --receive-files --download-dir D:\Incoming
 python -m vishare_quick advertise --name "ViShare Quick" --seconds 120 --dump-first-frame-hex
 python -m vishare_quick advertise --name "ViShare Quick" --seconds 120 --dump-frame-hex-index 2
+python -m vishare_quick peers --seconds 8
+python -m vishare_quick send --seconds 8 "C:\Users\me\Pictures\photo.jpg"
+python -m vishare_quick send --peer 192.168.43.39:53601 FILE1 FILE2
+python -m vishare_quick send --handshake-only FILE
 ```
 
 `advertise` publishes `_FC9F5ED42C8A._tcp.local.` and opens a TCP listener. Without
@@ -184,6 +205,44 @@ statement is the declared size plus strict chunk offsets, and the final zero-len
 Chunked (multi-frame) BYTES sharing payloads are not reassembled, and text-only shares are not
 saved as files. Received files are never executed.
 
+## Sending files (`send`)
+
+`vishare peers --seconds N` browses the same mDNS service type as the receiver and prints the
+receivers that answer. A discovered name, endpoint ID, and address are presentation only; they are
+never treated as identity.
+
+`vishare send FILE...` discovers exactly one receiver (or uses `--peer HOST:PORT`), connects
+directly on the local network, performs the UKEY2 client handshake, offers the files in an
+`Introduction`, and waits for the receiver's response. It:
+
+1. Prints the derived 4-digit code and asks you to compare it with the code shown on the receiving
+   device. Only an explicit `yes`/`y` continues; a blank line, end of input, `n`, or any other answer
+   cancels before any file byte is read.
+2. Requires the receiver's `RESPONSE ACCEPT` before opening any selected file.
+3. Streams each file in 512 KiB chunks with a zero-length `LAST_CHUNK` terminator, sends periodic
+   keep-alives, shows progress, and lingers briefly after the last chunk so the receiver can finish.
+
+`--handshake-only` stops right after the receiver accepts the offer, so you can check the PIN and
+the offered file list without reading a file byte. It is useful for controlled device tests.
+
+Safety behavior:
+
+- Only regular files are accepted. Symlinks, junctions, directories, and special files are rejected.
+- Empty (0-byte) files are rejected locally, because Android Quick Share drops the whole offer
+  before showing its accept sheet when one is included.
+- Peer-visible names are bare sanitized basenames; local absolute paths never reach the peer.
+- Each selected file's size and modification time are checked before and after streaming. A change
+  aborts the transfer.
+- Ctrl+C, a timeout, a rejected response, or a disconnect closes the connection and sends
+  `DISCONNECTION`; the sender keeps no partial transfer state.
+- The receiver may still have to discard a partially received file; the sender never claims a
+  partial transfer succeeded.
+- There is no resume, no cloud relay, and no Google account or internet dependency.
+
+Sending is CLI-only in this build. The Send page in the local interface remains a placeholder.
+Use the sender only on a trusted local network, with the receiving device's Quick Share sheet open
+so it advertises its current port.
+
 ## UKEY2 status
 
 Two Android 14 XPad diagnostic runs identified a `CONNECTION_REQUEST` followed by a UKEY2
@@ -206,9 +265,12 @@ Tests use deterministic synthetic fixtures. Live Android 14 XPad runs on a trust
 completed end-to-end reception for small image and document payloads, confirming the sender's
 524,288-byte chunks and zero-length `LAST_CHUNK` terminator. A multi-gigabyte movie transfer was
 reported by the user but not logged in this repository. Raw captures and peer filenames are not
-stored here. Sending remains unimplemented. Use the experimental response mode only for controlled
-real-device tests. Details are in
-[the Alpha 0.4 research notes](docs/ALPHA_0.4_RESEARCH.md) and [encrypted protocol research](docs/ALPHA_0.4_ENCRYPTED_PROTOCOL_RESEARCH.md).
+stored here. The client role is implemented as well: `vishare send` performs the initiator
+handshake, the no-credential paired-key exchange, the `Introduction`, and authenticated file
+streaming. Single-file, multi-file, and chunked transfers have been received by an Android 14 XPad
+on a trusted local network. Use the sender only in controlled real-device tests. Details are in
+[the Alpha 0.4 research notes](docs/ALPHA_0.4_RESEARCH.md), [encrypted protocol research](docs/ALPHA_0.4_ENCRYPTED_PROTOCOL_RESEARCH.md),
+and [the Alpha 0.6 sender notes](docs/ALPHA_0.6_SENDER_RESEARCH.md).
 
 ## Install and test
 
@@ -232,10 +294,11 @@ The encrypted-frame diagnostic and its limitations are described in
 - `alpha_0.1`: CLI foundation
 - `alpha_0.2`: passive Android Quick Share mDNS discovery
 - `alpha_0.3`: experimental mDNS advertisement; Android discovery observed on one Infinix XPad
-- `alpha_0.4`: bounded inspection, opt-in P256_SHA512 UKEY2, plaintext Nearby connection-response exchange, no-credential paired-key response (random-placeholder PKE + UNABLE), and a consent-gated streaming file receiver verified on one Android 14 XPad; peer identity verification and sending remain unimplemented
+- `alpha_0.4`: bounded inspection, opt-in P256_SHA512 UKEY2, plaintext Nearby connection-response exchange, no-credential paired-key response (random-placeholder PKE + UNABLE), and a consent-gated streaming file receiver verified on one Android 14 XPad; peer identity verification remains unimplemented
 - `alpha_0.5`: multi-page local interface for the same receiver (home, receive, PIN/consent, progress, result, settings), bundled offline assets, token-protected loopback server, explicit PIN and consent screens, progress/cancel/retry, activity log, saved-file result view, and functional settings; no protocol changes
+- `alpha_0.6`: CLI Quick Share sender (`peers`, `send`, `--handshake-only`), UKEY2 client role, sender key schedule, mDNS peer discovery, explicit PIN gate, 512 KiB authenticated streaming, keep-alives, progress, cancel, linger, and fail-closed cleanup; verified single-file, multi-file, chunked, and spaced-name transfers on one Android 14 XPad; Send page remains a placeholder
 - Future milestone: verify multi-file and text-only shares across more devices and display formats
-- Later milestone: implement and validate sending
+- Later milestone: Send page in the local interface and broader sender hardening
 
-Released as `alpha_0.5`. File reception has been demonstrated on one trusted local network; it is
-not a claim of peer identity verification or broad interoperability.
+Released as `alpha_0.6`. File reception and sending have been demonstrated on one trusted local
+network; this is not a claim of peer identity verification or broad interoperability.

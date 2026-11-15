@@ -13,7 +13,7 @@ class FakeService:
 
     def snapshot(self):
         return {
-            "version": "alpha_0.5",
+            "version": "alpha_0.6",
             "phase": self.phase,
             "active": self.phase == "advertising",
             "advertising": self.phase == "advertising",
@@ -114,7 +114,7 @@ class TestUiServer(unittest.TestCase):
         text = body.decode("utf-8")
         self.assertIn(self.server.token, text)
         self.assertNotIn("__VISHARE_TOKEN__", text)
-        self.assertIn("alpha_0.5", text)
+        self.assertIn("alpha_0.6", text)
 
     def test_state_requires_token_and_allows_loopback_hosts(self):
         status, _, _ = self.request("GET", "/api/state", token=False)
@@ -204,7 +204,7 @@ class TestUiServer(unittest.TestCase):
                 text = body.decode("utf-8")
                 self.assertIn(self.server.token, text)
                 self.assertNotIn("__VISHARE_TOKEN__", text)
-                self.assertIn("alpha_0.5", text)
+                self.assertIn("alpha_0.6", text)
 
     def test_path_traversal_is_not_served(self):
         for path in (

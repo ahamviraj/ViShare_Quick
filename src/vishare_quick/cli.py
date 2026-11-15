@@ -1,11 +1,47 @@
-"""Command-line interface for ViShare_Quick alpha_0.5."""
+"""Command-line interface for ViShare_Quick alpha_0.6."""
 
 import argparse
 import sys
+import threading
 
 from vishare_quick import __version__
 from vishare_quick.diagnostics import run_diagnostics
 from vishare_quick.mdns_probe import probe_mdns
+from vishare_quick.peer_discovery import (
+    DiscoveryError,
+    Peer,
+    browse_peers,
+    discover_peers,
+)
+from vishare_quick.sender import (
+    OutgoingFile,
+    SenderCancelled,
+    SenderError,
+    prepare_files,
+    send_files,
+)
+
+
+_SEND_STAGE_TEXT = {
+    "connecting": "Connecting to the device…",
+    "handshake": "Negotiating encryption…",
+    "offering": "Offering the file list…",
+    "pin-pending": "Waiting for you to compare the code…",
+    "awaiting-acceptance": "Waiting for the device to accept…",
+    "sending": "Sending files…",
+    "finishing": "Waiting for the device to finish…",
+    "complete": "Complete.",
+}
+
+
+def _human_size(value: float) -> str:
+    units = ("B", "KiB", "MiB", "GiB", "TiB")
+    amount = max(float(value), 0.0)
+    for unit in units:
+        if amount < 1024 or unit == units[-1]:
+            return f"{amount:.0f} {unit}" if unit == "B" else f"{amount:.1f} {unit}"
+        amount /= 1024
+    return f"{amount:.1f} TiB"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -33,6 +69,50 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     mdns.add_argument("--seconds", type=float, default=8.0, help="browse duration (default: 8 seconds)")
+
+    peers = subparsers.add_parser(
+        "peers",
+        help="list Quick Share receivers currently visible on the local network",
+        description=(
+            "Browse the Quick Share mDNS service type and list the receivers that "
+            "answer. This is passive discovery only: no connection is opened, no "
+            "file is offered, and a discovered name is never treated as identity."
+        ),
+    )
+    peers.add_argument(
+        "--seconds", type=float, default=8.0, help="browse duration (default: 8 seconds)"
+    )
+    peers.add_argument(
+        "--include-self",
+        action="store_true",
+        help="also list this machine's own advertisements (diagnostics)",
+    )
+
+    send = subparsers.add_parser(
+        "send",
+        help="send files to a discovered Quick Share receiver",
+        description=(
+            "Discover or select one Quick Share receiver, complete the UKEY2 "
+            "handshake, offer the files, and require an explicit PIN comparison "
+            "plus the receiver's acceptance before any file byte is read. Only "
+            "regular files are accepted and only basenames are sent."
+        ),
+    )
+    send.add_argument("paths", nargs="+", metavar="FILE", help="files to send")
+    send.add_argument(
+        "--peer",
+        metavar="HOST:PORT",
+        help="connect to this receiver instead of discovering one",
+    )
+    send.add_argument(
+        "--seconds", type=float, default=8.0, help="discovery duration (default: 8 seconds)"
+    )
+    send.add_argument("--name", default="ViShare Quick", help="visible device name")
+    send.add_argument(
+        "--handshake-only",
+        action="store_true",
+        help="stop after the receiver accepts, before any file byte is read",
+    )
 
     ui = subparsers.add_parser(
         "ui",
@@ -344,6 +424,163 @@ def main(argv: list[str] | None = None) -> int:
                 print("  TXT records: (none)")
             print(f"  Resolution: {service['resolution_note']}")
         print(f"\nNote: {result['note']}")
+        return 0
+
+    if args.command == "peers":
+        if args.seconds <= 0 or args.seconds > 120:
+            parser.error("--seconds must be greater than 0 and at most 120")
+        try:
+            result = browse_peers(args.seconds, include_self=args.include_self)
+        except (DiscoveryError, RuntimeError, ValueError) as exc:
+            print(f"Peer discovery failed: {exc}", file=sys.stderr)
+            return 2
+        print("Peer discovery completed.")
+        print(f"Browse duration: {result['duration_seconds']:.1f} seconds")
+        print(f"Service type queried: {result['service_type']}")
+        print(f"Receivers found: {len(result['peers'])}")
+        for index, peer in enumerate(result["peers"], start=1):
+            print(f"\nPeer {index}: {peer['name']}")
+            print(f"  Address: {peer['host']}:{peer['port']}")
+            print(
+                f"  Device type: {peer['device_type_label']} "
+                f"({peer['device_type']})"
+            )
+            print(f"  Endpoint ID: {peer['endpoint_id'] or '(unavailable)'}")
+            print(
+                "  Name advertised: "
+                + ("yes" if peer["name_is_advertised"] else "no (type label used)")
+            )
+        if not result["peers"]:
+            print(
+                "\nNo receiver answered. Android devices advertise only while their "
+                "Quick Share sheet is open, so open it on the phone and retry."
+            )
+        print(f"\nNote: {result['note']}")
+        return 0
+
+    if args.command == "send":
+        if args.seconds <= 0 or args.seconds > 120:
+            parser.error("--seconds must be greater than 0 and at most 120")
+        # Validate the local selection before any discovery or connection so a
+        # missing, empty, or special file fails immediately and visibly.
+        try:
+            prepare_files(args.paths)
+        except SenderError as exc:
+            print(f"Send failed: {exc}", file=sys.stderr)
+            return 2
+        print(
+            "WARNING: experimental Quick Share sender. It connects only on the local "
+            "network, sends basenames only, and requires you to compare the 4-digit "
+            "code with the receiving device before any file byte is read."
+        )
+        if args.peer:
+            host, separator, port_text = args.peer.rpartition(":")
+            try:
+                port = int(port_text)
+            except ValueError:
+                separator = ""
+                port = 0
+            if not separator or not host or not 0 < port <= 65535:
+                print("send failed: --peer must be HOST:PORT", file=sys.stderr)
+                return 2
+            peer = Peer(
+                instance=args.peer,
+                endpoint_id=None,
+                device_name=args.peer,
+                device_type=0,
+                host=host,
+                port=port,
+                name_is_advertised=False,
+            )
+        else:
+            try:
+                candidates = discover_peers(args.seconds)
+            except (DiscoveryError, RuntimeError, ValueError) as exc:
+                print(f"send failed: {exc}", file=sys.stderr)
+                return 2
+            if not candidates:
+                print(
+                    "send failed: no Quick Share receiver answered. Open the Quick Share "
+                    "sheet on the device and retry.",
+                    file=sys.stderr,
+                )
+                return 2
+            if len(candidates) > 1:
+                print(
+                    "send failed: more than one receiver answered; choose one with --peer:",
+                    file=sys.stderr,
+                )
+                for item in candidates:
+                    print(f"  {item.device_name}  {item.host}:{item.port}", file=sys.stderr)
+                return 2
+            peer = candidates[0]
+
+        print(f"Device: {peer.device_name} at {peer.host}:{peer.port}")
+        cancel_event = threading.Event()
+        last_stage: list[str | None] = [None]
+
+        def report_stage(name: str) -> None:
+            if name == last_stage[0]:
+                return
+            last_stage[0] = name
+            print(_SEND_STAGE_TEXT.get(name, name))
+
+        def confirm_pin(code: str) -> bool:
+            print(f"\nVerification code: {code}")
+            print(f"Compare this code with the one shown on {peer.device_name}.")
+            try:
+                answer = input("Type 'yes' only if both codes match: ")
+            except EOFError:
+                return False
+            return answer.strip().lower() in {"yes", "y"}
+
+        buckets: dict[int, int] = {}
+
+        def report_progress(item: OutgoingFile, sent: int, total: int) -> None:
+            percent = 100 if total == 0 else int(sent * 100 / total)
+            bucket = percent // 10 * 10
+            if buckets.get(item.payload_id) == bucket and percent != 100:
+                return
+            buckets[item.payload_id] = bucket
+            print(
+                f"  {item.name}: {percent}% "
+                f"({_human_size(sent)} of {_human_size(total)})"
+            )
+
+        try:
+            result = send_files(
+                peer,
+                args.paths,
+                device_name=args.name,
+                on_stage=report_stage,
+                on_pin=confirm_pin,
+                on_progress=report_progress,
+                cancel_event=cancel_event,
+                handshake_only=args.handshake_only,
+            )
+        except SenderCancelled as exc:
+            print(f"Send cancelled: {exc}")
+            return 130
+        except SenderError as exc:
+            print(f"Send failed: {exc}", file=sys.stderr)
+            return 2
+        except KeyboardInterrupt:
+            cancel_event.set()
+            print("\nSend cancelled.")
+            return 130
+
+        if result.pin_compared:
+            print("PIN comparison confirmed locally.")
+        if args.handshake_only:
+            print(
+                "Handshake-only run complete: the device accepted the offer and no "
+                "file byte was read."
+            )
+        else:
+            print(
+                f"Sent {result.files_sent} file(s), {_human_size(result.total_bytes)}, "
+                f"in {result.duration_seconds:.1f} seconds."
+            )
         return 0
 
     parser.print_help()

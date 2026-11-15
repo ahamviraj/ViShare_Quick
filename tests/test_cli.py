@@ -10,12 +10,12 @@ from vishare_quick.diagnostics import run_diagnostics
 
 class TestViShareQuickCLI(unittest.TestCase):
     def test_version(self):
-        self.assertEqual(__version__, "alpha_0.5")
+        self.assertEqual(__version__, "alpha_0.6")
 
     def test_diagnostics_include_required_fields(self):
         diagnostics = dict(run_diagnostics())
         self.assertEqual(diagnostics["Application"], "ViShare_Quick")
-        self.assertEqual(diagnostics["Version"], "alpha_0.5")
+        self.assertEqual(diagnostics["Version"], "alpha_0.6")
         self.assertIn("Python version", diagnostics)
         self.assertIn("OS family", diagnostics)
 
@@ -376,6 +376,31 @@ class TestDoubleClickPause(unittest.TestCase):
                     ["vishare-quick"], frozen=True, interactive=True
                 )
             )
+
+
+    @patch("vishare_quick.cli.discover_peers")
+    def test_send_rejects_a_missing_file_before_discovery(self, mocked_discover):
+        error = StringIO()
+        with redirect_stderr(error):
+            result = main(["send", "C:/definitely/not/here.bin"])
+        self.assertEqual(result, 2)
+        mocked_discover.assert_not_called()
+        self.assertIn("does not exist", error.getvalue())
+
+    @patch("vishare_quick.cli.discover_peers")
+    def test_send_rejects_an_empty_file_before_discovery(self, mocked_discover):
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "empty.txt"
+            path.write_bytes(b"")
+            error = StringIO()
+            with redirect_stderr(error):
+                result = main(["send", str(path)])
+        self.assertEqual(result, 2)
+        mocked_discover.assert_not_called()
+        self.assertIn("empty", error.getvalue())
 
 
 if __name__ == "__main__":

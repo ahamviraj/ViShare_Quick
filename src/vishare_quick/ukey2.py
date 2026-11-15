@@ -284,3 +284,109 @@ class Ukey2ServerHandshake:
         self._private_key = None
         self._client_commitment = None
         return HandshakeSecrets(auth_string, next_secret)
+
+
+class Ukey2ClientHandshake:
+    """Single-use P256_SHA512 UKEY2 initiator state machine.
+
+    The sender builds CLIENT_FINISH first, because CLIENT_INIT commits to
+    ``SHA512(CLIENT_FINISH)``. Both transcript messages are the serialized
+    ``Ukey2Message`` bytes without the TCP length prefix, exactly as the Google
+    implementation hashes them.
+    """
+
+    def __init__(self) -> None:
+        self._state = "start"
+        self._private_key: ec.EllipticCurvePrivateKey | None = None
+        self._client_init: bytes | None = None
+        self._client_finish: bytes | None = None
+
+    @property
+    def state(self) -> str:
+        return self._state
+
+    def create_client_init(
+        self,
+        *,
+        private_key: ec.EllipticCurvePrivateKey | None = None,
+        random_bytes: bytes | None = None,
+    ) -> bytes:
+        """Build CLIENT_INIT and return the framed payload ready to send."""
+        if self._state != "start":
+            raise HandshakeError("UKEY2 initiator is not in the ClientInit state.")
+        if private_key is None:
+            private_key = ec.generate_private_key(ec.SECP256R1())
+        if not isinstance(private_key, ec.EllipticCurvePrivateKey):
+            raise HandshakeError("Initiator private key must be an elliptic-curve private key.")
+        if not isinstance(private_key.curve, ec.SECP256R1):
+            raise HandshakeError("Initiator private key must use NIST P-256.")
+        nonce = secrets.token_bytes(32) if random_bytes is None else random_bytes
+        if not isinstance(nonce, bytes) or len(nonce) != 32:
+            raise HandshakeError("Initiator random must be 32 bytes.")
+
+        finish = _bfield(1, _encode_generic_p256(private_key.public_key()))
+        finish_payload = _vfield(1, 4) + _bfield(2, finish)
+        commitment = hashlib.sha512(finish_payload).digest()
+        cipher_commitment = _vfield(1, P256_SHA512) + _bfield(2, commitment)
+        init = (
+            _vfield(1, UKEY2_VERSION)
+            + _bfield(2, nonce)
+            + _bfield(3, cipher_commitment)
+            + _bfield(4, UKEY2_DOCUMENTED_NEXT_PROTOCOL)
+        )
+        payload = _vfield(1, 2) + _bfield(2, init)
+        if len(payload) > 1024 * 1024:
+            raise HandshakeError("ClientInit exceeds the configured frame limit.")
+
+        self._private_key = private_key
+        self._client_init = payload
+        self._client_finish = finish_payload
+        self._state = "waiting-for-server-init"
+        return len(payload).to_bytes(4, "big") + payload
+
+    def receive_server_init(
+        self, server_init_payload: bytes
+    ) -> tuple[bytes, HandshakeSecrets]:
+        """Consume SERVER_INIT; return (framed CLIENT_FINISH, derived secrets)."""
+        if self._state != "waiting-for-server-init":
+            raise HandshakeError("UKEY2 initiator is not waiting for ServerInit.")
+        if self._private_key is None or self._client_init is None or self._client_finish is None:
+            raise HandshakeError("UKEY2 initiator state is incomplete.")
+        if not isinstance(server_init_payload, bytes):
+            raise HandshakeError("ServerInit payload must be bytes.")
+
+        data = _outer_message(server_init_payload, 3)
+        server_init = _parse_fields(data)
+        version = _singular(server_init, 1, "ServerInit version", 0)
+        if version != UKEY2_VERSION:
+            raise HandshakeError("Unsupported UKEY2 version.")
+        random = _singular(server_init, 2, "ServerInit random", 2)
+        if not isinstance(random, bytes) or len(random) != 32:
+            raise HandshakeError("ServerInit random must be 32 bytes.")
+        cipher = _singular(server_init, 3, "ServerInit handshake_cipher", 0)
+        if cipher != P256_SHA512:
+            raise HandshakeError("ServerInit did not select P256_SHA512.")
+        encoded_public_key = _singular(server_init, 4, "ServerInit public_key", 2)
+        if not isinstance(encoded_public_key, bytes):
+            raise HandshakeError("ServerInit public key is malformed.")
+        peer_public_key = _decode_generic_p256(encoded_public_key)
+        try:
+            raw_dh = self._private_key.exchange(ec.ECDH(), peer_public_key)
+        except ValueError as exc:
+            raise HandshakeError("P-256 key agreement failed.") from exc
+
+        dh_secret = hashlib.sha256(raw_dh).digest()
+        transcript = self._client_init + server_init_payload
+        auth_string = HKDF(
+            algorithm=hashes.SHA256(), length=32, salt=AUTH_SALT, info=transcript
+        ).derive(dh_secret)
+        next_secret = HKDF(
+            algorithm=hashes.SHA256(), length=32, salt=NEXT_SALT, info=transcript
+        ).derive(dh_secret)
+
+        self._state = "keys-derived"
+        self._private_key = None
+        client_finish = self._client_finish
+        self._client_finish = None
+        framed = len(client_finish).to_bytes(4, "big") + client_finish
+        return framed, HandshakeSecrets(auth_string, next_secret)
