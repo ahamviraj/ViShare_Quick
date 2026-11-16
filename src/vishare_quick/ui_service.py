@@ -186,6 +186,11 @@ class ReceiveService:
         """The destination directory shown to the local user."""
         return self._download_dir
 
+    @property
+    def device_name(self) -> str:
+        """The visible name shared by the receiver and the sender."""
+        return self._device_name
+
     def _log(self, text: str) -> None:
         self._events.append(
             {"time": time.strftime("%H:%M:%S"), "text": text}

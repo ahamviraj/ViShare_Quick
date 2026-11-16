@@ -18,6 +18,16 @@
   ]);
   const ATTENTION_PHASES = new Set(["pin", "consent", "verifying"]);
   const FINAL_PHASES = new Set(["completed", "rejected", "failed", "cancelled"]);
+  const SEND_ACTIVE_PHASES = new Set([
+    "connecting",
+    "handshake",
+    "offering",
+    "pin",
+    "waiting",
+    "sending",
+    "finishing",
+  ]);
+  const SEND_FINAL_PHASES = new Set(["completed", "failed", "cancelled"]);
 
   const state = {
     snapshot: null,
@@ -26,6 +36,7 @@
     navigating: false,
     stopped: false,
     autoStartTried: false,
+    sendDiscoverTried: false,
     pollTimer: 0,
     toastTimer: 0,
     activitySignature: "",
@@ -137,7 +148,12 @@
       return;
     }
     const snapshot = state.snapshot;
-    const live = snapshot && (ACTIVE_PHASES.has(snapshot.phase) || FINAL_PHASES.has(snapshot.phase));
+    const send = snapshot && snapshot.send;
+    const live =
+      snapshot &&
+      (ACTIVE_PHASES.has(snapshot.phase) ||
+        FINAL_PHASES.has(snapshot.phase) ||
+        (send && SEND_ACTIVE_PHASES.has(send.phase)));
     const next =
       typeof delay === "number" ? delay : live ? 500 : state.online === false ? 2200 : 1200;
     state.pollTimer = window.setTimeout(poll, next);
@@ -166,6 +182,7 @@
 
     renderPresence();
     routePhase();
+    routeSendPhase();
 
     if (
       previous &&
@@ -193,6 +210,10 @@
       if (attention) {
         autoNavigate("receive-request.html");
       }
+      return;
+    }
+
+    if (PAGE === "sending" || PAGE === "send-failed") {
       return;
     }
 
@@ -243,6 +264,35 @@
         phase === "connecting"
       ) {
         autoNavigate("index.html");
+      }
+    }
+  }
+
+  function routeSendPhase() {
+    const snapshot = state.snapshot;
+    const send = snapshot && snapshot.send;
+    if (!send) {
+      return;
+    }
+    if (PAGE === "send") {
+      if (SEND_ACTIVE_PHASES.has(send.phase)) {
+        autoNavigate("send-sending.html");
+      } else if (
+        !state.busy &&
+        !state.sendDiscoverTried &&
+        !send.discovering &&
+        (send.peers || []).length === 0
+      ) {
+        state.sendDiscoverTried = true;
+        postAction("/api/send/discover", {}, {
+          failureMessage: "Nearby devices could not be listed.",
+        });
+      }
+      return;
+    }
+    if (PAGE === "sending") {
+      if (send.phase === "failed" || send.phase === "cancelled") {
+        autoNavigate("send-failed.html");
       }
     }
   }
@@ -307,6 +357,12 @@
       renderReceived();
     } else if (PAGE === "settings") {
       renderSettings();
+    } else if (PAGE === "send") {
+      renderSend();
+    } else if (PAGE === "sending") {
+      renderSending();
+    } else if (PAGE === "send-failed") {
+      renderSendFailed();
     }
     renderAvailability();
   }
@@ -659,6 +715,324 @@
           : "Up to 64 characters. Nearby devices see this name."
       );
     }
+  }
+
+  function sendSnapshot() {
+    return state.snapshot && state.snapshot.send ? state.snapshot.send : null;
+  }
+
+  function sendStatusText(send) {
+    if (!send) {
+      return "Connecting…";
+    }
+    if (send.phase === "pin") {
+      return "Waiting for PIN confirmation";
+    }
+    if (SEND_ACTIVE_PHASES.has(send.phase)) {
+      return "Sending files";
+    }
+    if (send.phase === "completed") {
+      return "Last send complete";
+    }
+    if (send.phase === "failed") {
+      return "Last send failed";
+    }
+    if (send.phase === "cancelled") {
+      return "Last send cancelled";
+    }
+    if (send.discovering) {
+      return "Looking for nearby devices";
+    }
+    return "Ready to send on this network";
+  }
+
+  function renderSendStatus() {
+    const send = sendSnapshot();
+    for (const element of $$("[data-send-status]")) {
+      setText(element, sendStatusText(send));
+    }
+  }
+
+  function renderSendFiles(container, files, progress) {
+    if (!container) {
+      return;
+    }
+    const fragment = document.createDocumentFragment();
+    for (const file of files) {
+      const total = Math.max(0, Number(file.size) || 0);
+      if (progress) {
+        const sent = Math.max(0, Number(file.sent) || 0);
+        const percent = file.done
+          ? 100
+          : total > 0
+            ? clampPercent(Math.floor((sent * 100) / total))
+            : 0;
+        fragment.append(
+          createTransferRow(
+            file.name,
+            `${formatBytes(sent)} of ${formatBytes(total)}`,
+            percent,
+            file.done
+          )
+        );
+      } else {
+        fragment.append(createTransferRow(file.name, formatBytes(total)));
+      }
+    }
+    container.replaceChildren(fragment);
+  }
+
+  function renderSendPeerList(container, send) {
+    if (!container) {
+      return;
+    }
+    const fragment = document.createDocumentFragment();
+    const disabled = state.busy || (send.files || []).length === 0;
+    for (const peer of send.peers || []) {
+      const item = document.createElement("li");
+      item.className = "send-peer";
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.action = "send-to-peer";
+      button.dataset.peerKey = peer.key;
+      button.disabled = disabled;
+
+      const icon = document.createElement("span");
+      icon.className = "send-peer-icon";
+      const image = document.createElement("img");
+      image.src = "/assets/laptop.png";
+      image.alt = "";
+      icon.append(image);
+
+      const main = document.createElement("span");
+      main.className = "send-peer-main";
+      const name = document.createElement("span");
+      name.className = "send-peer-name mainText";
+      setText(name, peer.name || "Nearby device");
+      const meta = document.createElement("span");
+      meta.className = "send-peer-meta mainText";
+      setText(
+        meta,
+        `${peer.device_type_label || "Device"} · ${peer.host}:${peer.port}`
+      );
+      main.append(name, meta);
+
+      const action = document.createElement("span");
+      action.className = "send-peer-action";
+      setText(action, "Send");
+
+      button.append(icon, main, action);
+      item.append(button);
+      fragment.append(item);
+    }
+    container.replaceChildren(fragment);
+  }
+
+  function renderSend() {
+    renderSendStatus();
+    const send = sendSnapshot();
+    const fileStatus = $("[data-send-files-status]");
+    const fileList = $("[data-send-file-list]");
+    const devices = $("[data-send-devices]");
+    const deviceText = $("[data-send-device-text]");
+    const peerList = $("[data-send-peer-list]");
+    const error = $("[data-send-error]");
+    if (!send) {
+      setText(fileStatus, "Connecting…");
+      return;
+    }
+    const files = send.files || [];
+    setText(
+      fileStatus,
+      files.length
+        ? `${files.length} ${files.length === 1 ? "file" : "files"} · ${formatBytes(
+            send.total_size
+          )}`
+        : "None selected"
+    );
+    if (fileList) {
+      fileList.hidden = files.length === 0;
+      renderSendFiles(fileList, files, false);
+    }
+    const peers = send.peers || [];
+    if (devices) {
+      devices.hidden = peers.length > 0;
+    }
+    if (deviceText) {
+      if (send.discovering) {
+        setText(deviceText, "Looking for nearby devices...");
+      } else if (peers.length === 0) {
+        setText(
+          deviceText,
+          "No nearby devices found. Open Quick Share on the device and refresh."
+        );
+      }
+    }
+    if (peerList) {
+      peerList.hidden = peers.length === 0;
+      renderSendPeerList(peerList, send);
+    }
+    if (error) {
+      error.hidden = !send.error;
+      setText(error, send.error || "");
+    }
+    const refresh = $('[data-action="refresh-peers"]');
+    if (refresh) {
+      refresh.disabled = state.busy || send.discovering;
+    }
+    const clear = $('[data-action="clear-files"]');
+    if (clear) {
+      clear.disabled = state.busy || files.length === 0;
+    }
+  }
+
+  function sendStateForPhase(phase) {
+    if (phase === "pin") {
+      return "waiting";
+    }
+    if (phase === "sending" || phase === "finishing") {
+      return "sending";
+    }
+    if (phase === "completed") {
+      return "sent";
+    }
+    if (phase === "failed" || phase === "cancelled") {
+      return "failed";
+    }
+    if (phase === "waiting") {
+      return "waiting";
+    }
+    return "found";
+  }
+
+  function sendPhaseLabel(phase) {
+    const labels = {
+      connecting: "Connecting...",
+      handshake: "Negotiating encryption...",
+      offering: "Offering the files...",
+      pin: "Waiting...",
+      waiting: "Waiting for the device to accept...",
+      sending: "Sending...",
+      finishing: "Finishing...",
+      completed: "Sent",
+      failed: "Failed",
+      cancelled: "Cancelled",
+    };
+    return labels[phase] || "Ready";
+  }
+
+  function renderSending() {
+    renderSendStatus();
+    const send = sendSnapshot();
+    if (!send) {
+      return;
+    }
+    const files = send.files || [];
+    const fileStatus = $("[data-send-files-status]");
+    const fileList = $("[data-send-file-list]");
+    const progressList = $("[data-send-progress]");
+    const peerName = $("[data-send-peer-name]");
+    const deviceState = $("[data-send-device-state]");
+    const pinText = $("[data-send-pin]");
+    const error = $("[data-send-error]");
+    const pinActions = $("[data-send-pin-actions]");
+    const cancelAction = $("[data-send-cancel]");
+    const resultActions = $("[data-send-result-actions]");
+    const peer = send.peer || (send.result ? { name: send.result.peer_name } : null);
+    const phase = send.phase;
+    const dataState = sendStateForPhase(phase);
+    document.body.dataset.state = dataState;
+
+    setText(
+      fileStatus,
+      files.length
+        ? `${files.length} ${files.length === 1 ? "file" : "files"} · ${formatBytes(
+            send.total_size
+          )}`
+        : "None selected"
+    );
+    if (fileList) {
+      fileList.hidden = files.length === 0;
+      renderSendFiles(fileList, files, false);
+    }
+    setText(peerName, (peer && (peer.name || peer.device_name)) || "Nearby device");
+    setText(deviceState, sendPhaseLabel(phase));
+
+    const showPin = phase === "pin" && send.pin;
+    if (pinText) {
+      pinText.hidden = !showPin;
+      setText(pinText, showPin ? `PIN: ${send.pin.code}` : "");
+    }
+
+    if (progressList) {
+      const progress = send.progress;
+      const visible =
+        Boolean(progress) &&
+        (phase === "sending" || phase === "finishing" || phase === "completed");
+      progressList.hidden = !visible;
+      if (visible) {
+        renderSendFiles(progressList, progress.files || [], true);
+      }
+      const arc = $(".ring-arc");
+      if (arc) {
+        if (phase === "sending" || phase === "finishing") {
+          const percent = progress ? clampPercent(progress.percent) : 0;
+          arc.style.strokeDashoffset = String(182.2 * (1 - percent / 100));
+        } else {
+          arc.style.strokeDashoffset = "";
+        }
+      }
+    }
+
+    if (error) {
+      const showError =
+        (phase === "failed" || phase === "cancelled") && Boolean(send.error);
+      error.hidden = !showError;
+      setText(error, showError ? send.error : "");
+    }
+    if (pinActions) {
+      pinActions.hidden = !showPin;
+    }
+    if (cancelAction) {
+      cancelAction.hidden = !SEND_ACTIVE_PHASES.has(phase);
+    }
+    if (resultActions) {
+      resultActions.hidden = phase !== "completed";
+    }
+  }
+
+  function renderSendFailed() {
+    renderSendStatus();
+    const send = sendSnapshot();
+    const fileStatus = $("[data-send-files-status]");
+    const fileList = $("[data-send-file-list]");
+    const peerName = $("[data-send-peer-name]");
+    const deviceState = $("[data-send-device-state]");
+    const error = $("[data-send-error]");
+    if (!send) {
+      return;
+    }
+    const files = send.files || [];
+    const peer = send.peer || (send.result ? { name: send.result.peer_name } : null);
+    document.body.dataset.state = "failed";
+    setText(
+      fileStatus,
+      files.length
+        ? `${files.length} ${files.length === 1 ? "file" : "files"} · ${formatBytes(
+            send.total_size
+          )}`
+        : "None selected"
+    );
+    if (fileList) {
+      fileList.hidden = files.length === 0;
+      renderSendFiles(fileList, files, false);
+    }
+    setText(peerName, (peer && (peer.name || peer.device_name)) || "Nearby device");
+    setText(deviceState, send.phase === "cancelled" ? "Cancelled" : "Failed");
+    setText(
+      error,
+      send.error || "The send stopped before it finished."
+    );
   }
 
   function renderAvailability() {
@@ -1031,6 +1405,189 @@
     }
   }
 
+  // ------------------------------------------------------------------ send
+  async function openSend() {
+    const send = sendSnapshot();
+    if (send && SEND_ACTIVE_PHASES.has(send.phase)) {
+      navigate("send-sending.html");
+      return;
+    }
+    if (send && SEND_FINAL_PHASES.has(send.phase)) {
+      await postAction("/api/send/dismiss", {}, {
+        failureMessage: "The last send could not be dismissed.",
+      });
+    }
+    state.sendDiscoverTried = false;
+    navigate("send-send.html");
+  }
+
+  function browseSendFiles() {
+    const input = $("[data-file-input]");
+    if (input) {
+      input.click();
+    }
+  }
+
+  async function uploadSendFiles(fileList) {
+    const files = Array.from(fileList || []);
+    if (!files.length) {
+      return;
+    }
+    state.busy = true;
+    renderPage();
+    try {
+      for (const file of files) {
+        if (!file.size) {
+          toast(`"${file.name}" is empty and cannot be sent.`, "error");
+          continue;
+        }
+        const response = await fetch("/api/send/add-file", {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "X-ViShare-Token": token,
+            "X-ViShare-Filename": encodeURIComponent(file.name),
+            "Content-Type": "application/octet-stream",
+          },
+          body: file,
+        });
+        let payload = null;
+        try {
+          payload = await response.json();
+        } catch (_error) {
+          payload = null;
+        }
+        if (payload && payload.state) {
+          applySnapshot(payload.state);
+        }
+        if (!response.ok || (payload && payload.ok === false)) {
+          toast(
+            (payload && payload.error) ||
+              `"${file.name}" could not be added to the selection.`,
+            "error"
+          );
+        }
+      }
+    } catch (_error) {
+      toast("The selected files could not be added.", "error");
+    } finally {
+      state.busy = false;
+      renderPage();
+    }
+  }
+
+  async function clearSendFiles() {
+    const send = sendSnapshot();
+    if (!send || (send.files || []).length === 0) {
+      return;
+    }
+    await postAction("/api/send/clear-files", {}, {
+      successMessage: "The selection was cleared.",
+      failureMessage: "The selection could not be cleared.",
+    });
+  }
+
+  async function refreshSendPeers() {
+    state.sendDiscoverTried = true;
+    await postAction("/api/send/discover", {}, {
+      successMessage: "Looking for nearby devices…",
+      failureMessage: "Nearby devices could not be listed.",
+    });
+  }
+
+  async function sendToPeer(peerKey) {
+    const send = sendSnapshot();
+    if (!send || (send.files || []).length === 0) {
+      toast("Select at least one file first.", "error");
+      return;
+    }
+    const payload = await postAction(
+      "/api/send/start",
+      { peer: peerKey },
+      {
+        failureMessage: "The send could not be started.",
+      }
+    );
+    if (payload && payload.ok !== false) {
+      navigate("send-sending.html");
+    }
+  }
+
+  async function sendPinDecision(match) {
+    if (!match) {
+      await postAction("/api/send/pin", { match: false }, {
+        successMessage: "The send was declined.",
+        failureMessage: "The decision could not be recorded.",
+      });
+      return;
+    }
+    await postAction("/api/send/pin", { match: true }, {
+      successMessage: "Codes confirmed.",
+      failureMessage: "The decision could not be recorded.",
+    });
+  }
+
+  async function cancelSend() {
+    if (
+      !window.confirm(
+        "Cancel this send? The transfer will stop and nothing else will be sent."
+      )
+    ) {
+      return;
+    }
+    await postAction("/api/send/cancel", {}, {
+      successMessage: "Cancelling the send…",
+      failureMessage: "The send could not be cancelled.",
+    });
+  }
+
+  async function leaveSend() {
+    const send = sendSnapshot();
+    let proceed = true;
+    if (send && SEND_ACTIVE_PHASES.has(send.phase)) {
+      if (!window.confirm("Leave and cancel this send?")) {
+        return;
+      }
+      const payload = await postAction("/api/send/cancel", {}, {
+        failureMessage: "The send could not be cancelled.",
+      });
+      proceed = Boolean(payload && payload.ok !== false);
+    } else if (send && SEND_FINAL_PHASES.has(send.phase)) {
+      await postAction("/api/send/dismiss", {}, {
+        failureMessage: "The last send could not be dismissed.",
+      });
+    }
+    if (proceed) {
+      navigate("index.html");
+    }
+  }
+
+  async function sendAnother() {
+    await postAction("/api/send/dismiss", {}, {
+      failureMessage: "The last send could not be dismissed.",
+    });
+    state.sendDiscoverTried = true;
+    navigate("send-send.html");
+  }
+
+  async function retrySend() {
+    await postAction("/api/send/dismiss", {}, {
+      failureMessage: "The last send could not be dismissed.",
+    });
+    state.sendDiscoverTried = false;
+    navigate("send-send.html");
+  }
+
+  async function finishSend() {
+    const send = sendSnapshot();
+    if (send && SEND_FINAL_PHASES.has(send.phase)) {
+      await postAction("/api/send/dismiss", {}, {
+        failureMessage: "The last send could not be dismissed.",
+      });
+    }
+    navigate("index.html");
+  }
+
   async function shutdown() {
     if (
       !window.confirm(
@@ -1123,6 +1680,42 @@
       case "open-receive":
         openReceive();
         break;
+      case "open-send":
+        openSend();
+        break;
+      case "browse-files":
+        browseSendFiles();
+        break;
+      case "refresh-peers":
+        refreshSendPeers();
+        break;
+      case "clear-files":
+        clearSendFiles();
+        break;
+      case "send-to-peer":
+        sendToPeer(target.dataset.peerKey);
+        break;
+      case "send-pin-accept":
+        sendPinDecision(true);
+        break;
+      case "send-pin-decline":
+        sendPinDecision(false);
+        break;
+      case "send-cancel":
+        cancelSend();
+        break;
+      case "leave-send":
+        leaveSend();
+        break;
+      case "send-another":
+        sendAnother();
+        break;
+      case "send-retry":
+        retrySend();
+        break;
+      case "send-finish":
+        finishSend();
+        break;
       case "open-logs":
         openLogs();
         break;
@@ -1179,6 +1772,42 @@
   const nameForm = $("#nameForm");
   if (nameForm) {
     nameForm.addEventListener("submit", saveDeviceName);
+  }
+
+  const fileInput = $("[data-file-input]");
+  if (fileInput) {
+    fileInput.addEventListener("change", () => {
+      const files = Array.from(fileInput.files || []);
+      fileInput.value = "";
+      uploadSendFiles(files);
+    });
+  }
+
+  const dropZone = $("[data-send-dropzone]");
+  if (dropZone) {
+    for (const type of ["dragenter", "dragover"]) {
+      dropZone.addEventListener(type, (event) => {
+        event.preventDefault();
+        dropZone.classList.add("is-dragging");
+      });
+    }
+    for (const type of ["dragleave", "drop"]) {
+      dropZone.addEventListener(type, (event) => {
+        event.preventDefault();
+        dropZone.classList.remove("is-dragging");
+      });
+    }
+    dropZone.addEventListener("drop", (event) => {
+      uploadSendFiles(event.dataTransfer && event.dataTransfer.files);
+    });
+  }
+
+  if (PAGE === "send") {
+    for (const type of ["dragover", "drop"]) {
+      document.addEventListener(type, (event) => {
+        event.preventDefault();
+      });
+    }
   }
 
   document.addEventListener("visibilitychange", () => {

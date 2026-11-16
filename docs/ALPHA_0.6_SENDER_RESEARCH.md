@@ -351,9 +351,14 @@ name decoding, display sanitisation, and service-record fallbacks.
 
 ### Send UI deferred
 
-The working sender is CLI-only for `alpha_0.6`. The Send page remains the existing placeholder; a
-peer list, browser file staging, PIN comparison, progress, and cancel belong to the next milestone,
-where they can reuse `PeerBrowser` and `send_files` directly.
+The working sender is CLI-only for `alpha_0.6`. The Send page remains the existing placeholder at
+that tag; a peer list, browser file staging, PIN comparison, progress, and cancel belong to the next
+milestone, where they can reuse `PeerBrowser` and `send_files` directly.
+
+**Implemented in `alpha_0.7`:** the local Send page now provides peer discovery, browser file
+staging, PIN confirmation, acceptance wait, progress, cancel, retry, and result routing through
+`SendService`, which calls `PeerBrowser` and `send_files` directly. See
+[the Alpha 0.7 send-interface notes](ALPHA_0.7_SEND_INTERFACE.md). The CLI remains available.
 
 ### Remaining device checks
 

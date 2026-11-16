@@ -1,3 +1,3 @@
 """ViShare_Quick package."""
 
-__version__ = "alpha_0.6"
+__version__ = "alpha_0.7"

@@ -24,13 +24,15 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 from vishare_quick import __version__
+from vishare_quick.send_service import SendService
 from vishare_quick.ui import STATIC_DIR
 from vishare_quick.ui_service import ReceiveService
 
 MAX_BODY_BYTES = 8 * 1024
+MAX_UPLOAD_BYTES = 1 << 40  # 1 TiB, mirroring the sender's declared-size bound
 _LOOPBACK_HOST = "127.0.0.1"
 _ALLOWED_HOSTS = frozenset({"127.0.0.1", "localhost", "::1", "[::1]"})
 _ASSET_TYPES = {
@@ -48,6 +50,9 @@ _PAGES = frozenset(
         "receive-request.html",
         "receive-receiving.html",
         "receive-received.html",
+        "send-send.html",
+        "send-sending.html",
+        "send-failed.html",
         "settings.html",
         "under-construction.html",
     }
@@ -116,11 +121,19 @@ class UiHTTPServer(ThreadingHTTPServer):
         request_handler: type[BaseHTTPRequestHandler],
         *,
         service: ReceiveService,
+        send_service: SendService,
         token: str,
     ) -> None:
         self.service = service
+        self.send_service = send_service
         self.token = token
         super().__init__(server_address, request_handler)
+
+    def snapshot(self) -> dict[str, Any]:
+        """Merge the receiver and sender snapshots for the local pages."""
+        state = dict(self.service.snapshot())
+        state["send"] = self.send_service.snapshot()
+        return state
 
     def handle_error(self, request: Any, client_address: Any) -> None:
         error = sys.exc_info()[1]
@@ -230,7 +243,7 @@ class UiRequestHandler(BaseHTTPRequestHandler):
         return parsed
 
     def _reply_state(self, ok: bool = True, status: int = 200) -> None:
-        self._send_json(status, {"ok": ok, "state": self.server.service.snapshot()})
+        self._send_json(status, {"ok": ok, "state": self.server.snapshot()})
 
     def _require_api_access(self) -> bool:
         if not self._host_allowed():
@@ -264,7 +277,7 @@ class UiRequestHandler(BaseHTTPRequestHandler):
             if not self._token_allowed():
                 self._send_error_json(401, "Missing or invalid interface token.")
                 return
-            self._send_json(200, self.server.service.snapshot())
+            self._send_json(200, self.server.snapshot())
             return
         static_file = _safe_static_path(path)
         if static_file is not None:
@@ -301,14 +314,107 @@ class UiRequestHandler(BaseHTTPRequestHandler):
         self._send_bytes(HTTPStatus.OK, data, content_type)
 
     # ------------------------------------------------------------------- POST
+    def _read_upload(self) -> tuple[str, int] | None:
+        """Validate the raw-file upload headers and return name and length."""
+        raw_length = self.headers.get("Content-Length")
+        if raw_length is None:
+            self._send_error_json(411, "Content-Length is required.", close=True)
+            return None
+        try:
+            length = int(raw_length)
+        except ValueError:
+            self._send_error_json(400, "Invalid Content-Length.", close=True)
+            return None
+        if length <= 0 or length > MAX_UPLOAD_BYTES:
+            self._send_error_json(413, "That file size is not supported.", close=True)
+            return None
+        content_type = (self.headers.get("Content-Type") or "").split(";", 1)[0]
+        if content_type.strip().lower() != "application/octet-stream":
+            self._send_error_json(
+                415, "File uploads must be application/octet-stream.", close=True
+            )
+            return None
+        encoded_name = self.headers.get("X-ViShare-Filename")
+        if not encoded_name:
+            self._send_error_json(400, "A file name is required.", close=True)
+            return None
+        try:
+            filename = unquote(encoded_name, encoding="utf-8", errors="strict")
+        except (UnicodeDecodeError, ValueError):
+            self._send_error_json(400, "The file name is not valid UTF-8.", close=True)
+            return None
+        return filename, length
+
+    def _handle_send_upload(self) -> None:
+        headers = self._read_upload()
+        if headers is None:
+            return
+        filename, length = headers
+        try:
+            self.server.send_service.add_upload(self.rfile, filename, length)
+        except ValueError as exc:
+            self.close_connection = True
+            self._send_json(
+                409,
+                {"ok": False, "error": str(exc), "state": self.server.snapshot()},
+            )
+            return
+        except OSError:
+            self._send_error_json(
+                500, "The file could not be saved to the staging area.", close=True
+            )
+            return
+        self._reply_state()
+
     def do_POST(self) -> None:
         if not self._require_api_access():
+            return
+        path = urlsplit(self.path).path
+        if path == "/api/send/add-file":
+            self._handle_send_upload()
             return
         body = self._read_json_body()
         if body is None:
             return
-        path = urlsplit(self.path).path
         service = self.server.service
+        sender = self.server.send_service
+
+        if path == "/api/send/discover":
+            started = sender.start_discovery()
+            self._reply_state(ok=started, status=200 if started else 409)
+            return
+        if path == "/api/send/start":
+            peer_key = body.get("peer")
+            if peer_key is not None and not isinstance(peer_key, str):
+                self._send_error_json(400, "peer must be a string.")
+                return
+            started = sender.start_send(peer_key)
+            self._reply_state(ok=started, status=200 if started else 409)
+            return
+        if path == "/api/send/pin":
+            match = body.get("match")
+            if not isinstance(match, bool):
+                self._send_error_json(400, "match must be true or false.")
+                return
+            resolved = sender.resolve_pin(match)
+            self._reply_state(ok=resolved, status=200 if resolved else 409)
+            return
+        if path == "/api/send/cancel":
+            cancelled = sender.cancel()
+            self._reply_state(ok=cancelled, status=200 if cancelled else 409)
+            return
+        if path == "/api/send/clear-files":
+            cleared = sender.clear_files()
+            self._reply_state(ok=cleared, status=200 if cleared else 409)
+            return
+        if path == "/api/send/dismiss":
+            sender.dismiss_result()
+            self._reply_state()
+            return
+        if path == "/api/send/reset":
+            reset = sender.reset()
+            self._reply_state(ok=reset, status=200 if reset else 409)
+            return
 
         if path == "/api/start":
             started = service.start()
@@ -348,6 +454,8 @@ class UiRequestHandler(BaseHTTPRequestHandler):
                 self._send_error_json(400, "name must be a string.")
                 return
             updated = service.set_device_name(name)
+            if updated:
+                sender.set_device_name(name)
             self._reply_state(ok=updated, status=200 if updated else 409)
             return
         if path == "/api/open-downloads":
@@ -368,6 +476,7 @@ class UiRequestHandler(BaseHTTPRequestHandler):
         # Give the response a moment to leave the socket before stopping.
         threading.Event().wait(0.15)
         try:
+            self.server.send_service.stop()
             self.server.service.stop()
         finally:
             self.server.shutdown()
@@ -376,6 +485,7 @@ class UiRequestHandler(BaseHTTPRequestHandler):
 def create_server(
     service: ReceiveService,
     *,
+    send_service: SendService | None = None,
     host: str = _LOOPBACK_HOST,
     port: int = 0,
 ) -> UiHTTPServer:
@@ -385,7 +495,17 @@ def create_server(
     if port < 0 or port > 65535:
         raise ValueError("Port must be between 0 and 65535.")
     token = secrets.token_urlsafe(32)
-    return UiHTTPServer((host, port), UiRequestHandler, service=service, token=token)
+    if send_service is None:
+        send_service = SendService(
+            device_name=getattr(service, "device_name", "ViShare Quick")
+        )
+    return UiHTTPServer(
+        (host, port),
+        UiRequestHandler,
+        service=service,
+        send_service=send_service,
+        token=token,
+    )
 
 
 def default_download_dir() -> Path:
@@ -405,7 +525,8 @@ def run_ui(
         download_dir if download_dir is not None else default_download_dir(),
         device_name,
     )
-    server = create_server(service, port=port)
+    send_service = SendService(device_name=service.device_name)
+    server = create_server(service, send_service=send_service, port=port)
     url = f"http://127.0.0.1:{server.server_address[1]}/"
     print(f"ViShare Quick interface: {url}", flush=True)
     print(f"Downloads folder: {service.download_dir}", flush=True)
@@ -417,6 +538,7 @@ def run_ui(
     except KeyboardInterrupt:
         print("\nStopping ViShare Quick.")
     finally:
+        send_service.stop()
         service.stop()
         server.server_close()
     return 0

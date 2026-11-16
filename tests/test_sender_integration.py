@@ -15,6 +15,7 @@ import os
 import socket
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -36,6 +37,7 @@ from vishare_quick.secure_channel import (
     derive_server_to_client_send_keys,
     encode_secure_message,
 )
+from vishare_quick.send_service import SendService
 from vishare_quick.sender import SenderCancelled, send_files
 from vishare_quick.sender_protocol import (
     PAYLOAD_TYPE_FILE,
@@ -285,6 +287,50 @@ class SendFilesIntegrationTests(unittest.TestCase):
             receiver.join(10)
             self.assertIsNone(receiver.error)
             self.assertNotIsInstance(caught.exception, AssertionError)
+
+
+class SendServiceIntegrationTests(unittest.TestCase):
+    def test_pin_gate_then_completion_through_the_ui_service(self):
+        with tempfile.TemporaryDirectory() as directory:
+            body = b"send-service payload\n" * 64
+            path = Path(directory) / "note.txt"
+            path.write_bytes(body)
+
+            receiver = MockReceiver()
+            receiver.start()
+            peer = receiver.peer()
+            service = SendService(device_name="UI Test Desk")
+            service._peers = {peer.key: peer}
+            with path.open("rb") as handle:
+                service.add_upload(handle, "note.txt", len(body))
+
+            self.assertTrue(service.start_send())
+            saw_pin = False
+            snapshot = service.snapshot()
+            deadline = time.monotonic() + 10.0
+            while time.monotonic() < deadline:
+                snapshot = service.snapshot()
+                if snapshot["phase"] == "pin":
+                    saw_pin = True
+                    self.assertEqual(len(snapshot["pin"]["code"]), 4)
+                    self.assertTrue(service.resolve_pin(True))
+                if snapshot["phase"] in {"completed", "failed", "cancelled"}:
+                    break
+                time.sleep(0.02)
+
+            self.assertTrue(saw_pin)
+            self.assertEqual(snapshot["phase"], "completed")
+            self.assertEqual(snapshot["result"]["files_sent"], 1)
+            self.assertEqual(snapshot["error"], None)
+
+            receiver.join(10)
+            self.assertFalse(receiver.is_alive())
+            self.assertIsNone(receiver.error)
+            payloads = {
+                key: b"".join(parts) for key, parts in receiver.chunks.items()
+            }
+            self.assertEqual(list(payloads.values()), [body])
+            service.stop()
 
 
 if __name__ == "__main__":

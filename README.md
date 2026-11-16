@@ -1,6 +1,6 @@
 # ViShare_Quick
 
-**Package:** `alpha_0.6` (research build)\
+**Package:** `alpha_0.7` (research build)\
 **Target:** Windows / Linux · Python 3.10+
 
 ## Download
@@ -10,10 +10,10 @@ Prebuilt single-file executables are attached to the release:
 - Windows x64: `vishare-quick.exe`
 - Linux x64: `vishare-quick` (x86_64, glibc 2.35 or newer)
 
-Both are self-contained PyInstaller builds of the same receiver and use the same explicit PIN
-confirmation and consent prompts. Launch the executable with no arguments (or double-click it on
-Windows) to open the local graphical interface. The command-line commands below remain available
-for scripted and diagnostic use.
+Both are self-contained PyInstaller builds with the same local interface and command-line features.
+They use the same explicit PIN confirmation and consent prompts. Launch the executable with no
+arguments (or double-click it on Windows) to open the local graphical interface. The command-line
+commands below remain available for scripted and diagnostic use.
 
 Linux downloads do not keep the executable bit, so set it once:
 
@@ -32,16 +32,37 @@ Windows (PowerShell):
 .\vishare-quick.exe advertise --ukey2-handshake --receive-files
 ```
 
-This build packages the receiver as a local, multi-page interface while keeping the experimental CLI
-and protocol diagnostics. Launching the executable with no arguments opens the interface: choose
-**Receive files**, let the app advertise as a Quick Share endpoint, compare the 4-digit code shown on
-both devices, and approve the sanitized file list before anything is saved. Progress and the final
-result stay on screen, and a timeout, decline, cancellation, or disconnect fails closed and removes
-partial files.
+This build packages the receiver and sender as a local, multi-page interface while keeping the
+experimental CLI and protocol diagnostics. Launching the executable with no arguments opens the
+interface: choose **Receive files** to advertise as a Quick Share endpoint, or **Send files** to
+stage local files and offer them to a nearby receiver. Both flows compare the 4-digit code on both
+devices and require an explicit decision before file bytes move. Progress and the final result stay
+on screen, and a timeout, decline, cancellation, or disconnect fails closed and removes partial
+files.
 
 The command line remains available for scripted and diagnostic use, including bounded frame
 inspection, the opt-in P256_SHA512 UKEY2 handshake, encrypted-frame inspection, paired-key probes,
-the consent-gated `--receive-files` receiver, and the `peers`/`send` Quick Share sender.
+the consent-gated `--receive-files` receiver, and the `peers`/`send` Quick Share sender. The local
+interface also sends files through the **Send** page.
+
+## Highlights in `alpha_0.7`
+
+- **Send from the local interface**: the Home **Send** card now opens a complete sender flow instead
+  of a placeholder.
+- **Browser file staging**: select multiple files with the browser picker or drop them onto the
+  page. Uploads stream to a private staging directory, and the browser never learns a local path.
+- **Nearby receiver list**: discovery starts when the Send page opens and can be refreshed. The list
+  exposes only presentation fields; peer endpoint IDs and instance names stay out of snapshots.
+- **Same explicit PIN gate**: the derived 4-digit code appears only while comparison is pending. No
+  file byte is read until you confirm a match and the receiver accepts the offer.
+- **Progress, cancel, and retry**: per-file progress, cancel from connection through streaming, a
+  dedicated failure page with **Try again**, and a completed state with **Send more files**.
+- **Fail-closed cleanup**: staged copies and partial uploads are removed on clear, reset,
+  cancellation, or interface shutdown. A timeout or disconnect never reports success.
+- **Bounded selection**: sanitized unique names, non-empty files only, up to 64 staged files, and the
+  sender's existing total-size limit.
+- **Verification**: 398 unit tests, loopback HTTP smoke tests, and a Playwright end-to-end send
+  through a mock receiver. A real Android run of the browser sender remains a follow-up check.
 
 ## Highlights in `alpha_0.6`
 
@@ -57,8 +78,8 @@ the consent-gated `--receive-files` receiver, and the `peers`/`send` Quick Share
 - **Fail-closed sender**: cancellation, timeout, disconnect, rejection, or a file that changes closes
   the connection and leaves no partial sender state.
 - **Verified on device**: single-file, multi-file, chunked 1.2 MiB, and spaced-name transfers were
-  received by an Android 14 XPad with matching PINs. The Send page remains a placeholder in this
-  build; the sender is CLI-only for now.
+  received by an Android 14 XPad with matching PINs. This validation used the CLI sender; the local
+  **Send** page was added in `alpha_0.7`.
 
 ## Highlights in `alpha_0.5`
 
@@ -80,16 +101,16 @@ the consent-gated `--receive-files` receiver, and the `peers`/`send` Quick Share
 
 ## Local interface (`ui`)
 
-`vishare ui` starts the receiver and serves the interface at `http://127.0.0.1:<port>/`. The
-executable opens it automatically when launched without arguments; `--no-browser` suppresses the
-tab. The server binds only to loopback, uses a fresh random token for each run, sends a restrictive
-Content-Security-Policy, and never enables CORS. Every page, stylesheet, script, icon, and the
-Varela Round font is bundled, so the interface works without an internet connection.
+`vishare ui` starts the local interface at `http://127.0.0.1:<port>/` and serves both the receiver
+and sender pages. The executable opens it automatically when launched without arguments;
+`--no-browser` suppresses the tab. The server binds only to loopback, uses a fresh random token for
+each run, sends a restrictive Content-Security-Policy, and never enables CORS. Every page,
+stylesheet, script, icon, and the Varela Round font is bundled, so the interface works without an
+internet connection.
 
 Pages:
 
-- **Home**: the visible device name, current receiver state, Receive files, Send files (under
-  construction), and Settings.
+- **Home**: the visible device name, current receiver state, Receive files, Send files, and Settings.
 - **Receive**: starts advertising when opened, shows whether the laptop is visible, and offers
   **See Logs** and **Stop receiving**.
 - **Request**: the 4-digit PIN comparison, followed by the file list and explicit Accept/Decline.
@@ -97,6 +118,12 @@ Pages:
 - **Receiving**: per-file progress and a Cancel action that confirms before removing partial files.
 - **Result**: completed, declined, failed, or cancelled state, saved file names and sizes, **See
   Logs**, **Open in Files**, and retry or back navigation.
+- **Send**: choose files with the browser picker or drag and drop, upload them to a private staging
+  directory, browse nearby Quick Share receivers, and start a send. Files never leave the local
+  machine until you select a device and confirm the PIN.
+- **Sending**: the derived PIN comparison, receiver acceptance, per-file progress, cancel, and the
+  completed state with **Send more files**.
+- **Send failed**: the safe error, the selected files, and **Try again** or **Main** navigation.
 - **Settings**: device name (while idle), download folder, **Stop receiving**, and **Stop
   interface**.
 
@@ -239,9 +266,14 @@ Safety behavior:
   partial transfer succeeded.
 - There is no resume, no cloud relay, and no Google account or internet dependency.
 
-Sending is CLI-only in this build. The Send page in the local interface remains a placeholder.
-Use the sender only on a trusted local network, with the receiving device's Quick Share sheet open
-so it advertises its current port.
+The local **Send** page uses the same sender after uploading the selected files to a private
+staging directory with the browser picker or drag and drop; it never opens a native file dialog.
+It accepts up to 64 files per selection, rejects empty files, sanitizes names, and streams each
+upload to disk before the page enables **Send**. The staged copies are removed when the send is
+cleared, reset, cancelled, or the interface stops. The CLI sender remains available for scripted
+and diagnostic runs. Use either sender only on a trusted local network, with the receiving device's
+Quick Share sheet open so it advertises its current port. Implementation and verification details
+are in [the Alpha 0.7 send-interface notes](docs/ALPHA_0.7_SEND_INTERFACE.md).
 
 ## UKEY2 status
 
@@ -296,9 +328,10 @@ The encrypted-frame diagnostic and its limitations are described in
 - `alpha_0.3`: experimental mDNS advertisement; Android discovery observed on one Infinix XPad
 - `alpha_0.4`: bounded inspection, opt-in P256_SHA512 UKEY2, plaintext Nearby connection-response exchange, no-credential paired-key response (random-placeholder PKE + UNABLE), and a consent-gated streaming file receiver verified on one Android 14 XPad; peer identity verification remains unimplemented
 - `alpha_0.5`: multi-page local interface for the same receiver (home, receive, PIN/consent, progress, result, settings), bundled offline assets, token-protected loopback server, explicit PIN and consent screens, progress/cancel/retry, activity log, saved-file result view, and functional settings; no protocol changes
-- `alpha_0.6`: CLI Quick Share sender (`peers`, `send`, `--handshake-only`), UKEY2 client role, sender key schedule, mDNS peer discovery, explicit PIN gate, 512 KiB authenticated streaming, keep-alives, progress, cancel, linger, and fail-closed cleanup; verified single-file, multi-file, chunked, and spaced-name transfers on one Android 14 XPad; Send page remains a placeholder
-- Future milestone: verify multi-file and text-only shares across more devices and display formats
-- Later milestone: Send page in the local interface and broader sender hardening
+- `alpha_0.6`: CLI Quick Share sender (`peers`, `send`, `--handshake-only`), UKEY2 client role, sender key schedule, mDNS peer discovery, explicit PIN gate, 512 KiB authenticated streaming, keep-alives, progress, cancel, linger, and fail-closed cleanup; verified single-file, multi-file, chunked, and spaced-name transfers on one Android 14 XPad
+- `alpha_0.7`: local **Send** page with browser file picker and drag/drop staging, nearby receiver list, explicit PIN confirmation, per-file progress, cancel, retry, failure routing, and fail-closed cleanup; sender device name follows Settings
+- Future milestone: verify multi-file and text-only shares across more devices and display formats, including the browser sender on a real Android device
+- Later milestone: broader sender hardening
 
-Released as `alpha_0.6`. File reception and sending have been demonstrated on one trusted local
+Released as `alpha_0.7`. File reception and sending have been demonstrated on one trusted local
 network; this is not a claim of peer identity verification or broad interoperability.

@@ -1,0 +1,485 @@
+/* Shared layout for the send screens. */
+
+.file-selected-info {
+  display: block;
+  padding: 14px 14px 10px;
+  border-radius: var(--radius);
+  margin-bottom: 30px;
+}
+
+.select-main {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+
+.check-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 45px;
+  height: 45px;
+  border-radius: 50%;
+  background-color: var(--bg);
+  flex-shrink: 0;
+}
+
+.check-badge svg {
+  width: 22px;
+  height: 22px;
+  stroke: var(--ink);
+}
+
+.select-files {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.select-text {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.select-status {
+  font-size: 11px;
+  opacity: 0.8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drop-here {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  margin-top: 10px;
+  padding: 14px 10px;
+  border: 1px dashed #d9e2ff40;
+  border-radius: 12px;
+  background-color: transparent;
+  color: inherit;
+  font-family: inherit;
+  cursor: pointer;
+  opacity: 0.8;
+  transition:
+    border-color 0.2s ease,
+    opacity 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.drop-here:hover,
+.drop-here:focus-visible,
+.drop-here.is-dragging {
+  border-color: var(--accent);
+  background-color: #d9e2ff08;
+  opacity: 1;
+  outline: none;
+}
+
+.drop-here-icon {
+  width: 30px;
+  height: 30px;
+}
+
+.select-drop {
+  margin-top: 5px;
+  font-size: 11px;
+  opacity: 0.8;
+  text-align: center;
+}
+
+.select-button {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.select-btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: var(--radius);
+  background-color: var(--accent);
+  color: var(--bg);
+  font-size: 11px;
+  font-weight: bold;
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease,
+    transform 0.1s ease;
+}
+
+.select-btn:hover:not(:disabled) {
+  background-color: #eef2ff;
+}
+
+.select-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.select-btn:disabled {
+  opacity: 0.32;
+  cursor: not-allowed;
+}
+
+.send-file-list,
+.send-progress-list {
+  margin-top: 12px;
+}
+
+.file-info {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+  border-radius: var(--radius);
+  margin-bottom: 22px;
+}
+
+.wait-logo {
+  width: 80px;
+  height: 80px;
+  overflow: visible;
+}
+
+.wait {
+  font-size: 11px;
+  opacity: 0.8;
+  margin-bottom: 10px;
+  text-align: center;
+}
+
+.qr-code-main {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.qr-code {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 30px;
+  padding: 5px;
+  border-radius: 10px;
+  background-color: #d9e2ff10;
+  color: var(--accent);
+}
+
+.qr-code img,
+.qr-code svg {
+  width: 20px;
+  height: 20px;
+}
+
+.send-devices {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+}
+
+.send-devices .wait-logo {
+  margin-top: 4px;
+}
+
+.send-peer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.send-peer {
+  width: 100%;
+}
+
+.send-peer button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d9e2ff26;
+  border-radius: 12px;
+  background-color: var(--bg);
+  color: var(--ink);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.send-peer button:hover:not(:disabled),
+.send-peer button:focus-visible {
+  border-color: var(--accent);
+  background-color: #d9e2ff10;
+  outline: none;
+}
+
+.send-peer button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.send-peer-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background-color: var(--accent);
+  flex-shrink: 0;
+}
+
+.send-peer-icon img {
+  width: 22px;
+  height: 22px;
+}
+
+.send-peer-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.send-peer-name {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.send-peer-meta {
+  font-size: 10px;
+  opacity: 0.65;
+}
+
+.send-peer-action {
+  flex-shrink: 0;
+  padding: 7px 12px;
+  border-radius: 12px;
+  background-color: var(--accent);
+  color: var(--bg);
+  font-size: 10px;
+  font-weight: bold;
+}
+
+.send-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.send-error {
+  width: 100%;
+  margin: 4px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background-color: #ff9b9b14;
+  color: var(--danger);
+  font-size: 11px;
+  text-align: center;
+}
+
+/* ------------------------------------------------------- device / progress */
+
+.device {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 100%;
+  min-height: 112px;
+}
+
+.device-avatar {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 4px;
+}
+
+.device-core {
+  position: absolute;
+  inset: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background-color: var(--accent);
+  transition: background-color 0.45s ease;
+}
+
+.device-laptop {
+  width: 26px;
+  height: 26px;
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease;
+}
+
+.device-check,
+.device-fail {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  opacity: 0;
+  transform: scale(0.5);
+  transition:
+    opacity 0.3s ease,
+    transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.device-check {
+  stroke: #ffffff;
+}
+
+.device-fail {
+  stroke: #ffffff;
+}
+
+.ring {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+
+.ring-track,
+.ring-arc {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.ring-track {
+  stroke: var(--accent);
+  opacity: 0.25;
+}
+
+.ring-arc {
+  stroke: var(--accent);
+  stroke-dasharray: 182.2;
+  stroke-dashoffset: 182.2;
+  transform: rotate(-90deg);
+  transform-origin: 32px 32px;
+  transition: stroke-dashoffset 0.4s ease;
+}
+
+.device-name {
+  max-width: 100%;
+  font-size: 12px;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-pin,
+.device-status {
+  font-size: 11px;
+  opacity: 0.8;
+  text-align: center;
+}
+
+.device-pin {
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition:
+    max-height 0.35s ease,
+    opacity 0.35s ease;
+}
+
+/* --------------------------------------------------------------- states */
+
+body[data-state="waiting"] .ring {
+  opacity: 1;
+  animation: send-ring-spin 1.1s linear infinite;
+}
+
+body[data-state="waiting"] .ring-arc {
+  stroke-dasharray: 46 136.2;
+  stroke-dashoffset: 0;
+}
+
+body[data-state="waiting"] .device-pin {
+  max-height: 16px;
+  opacity: 0.8;
+}
+
+body[data-state="sending"] .ring {
+  opacity: 1;
+}
+
+body[data-state="sent"] .device-core {
+  background-color: var(--accent-deep);
+}
+
+body[data-state="sent"] .device-laptop,
+body[data-state="failed"] .device-laptop,
+body[data-state="cancelled"] .device-laptop {
+  opacity: 0;
+  transform: scale(0.6);
+}
+
+body[data-state="sent"] .device-check {
+  opacity: 1;
+  transform: scale(1);
+}
+
+body[data-state="failed"] .device-core,
+body[data-state="cancelled"] .device-core {
+  background-color: #ea4335;
+}
+
+body[data-state="failed"] .device-fail,
+body[data-state="cancelled"] .device-fail {
+  opacity: 1;
+  transform: scale(1);
+}
+
+body[data-state="failed"] .device-status,
+body[data-state="cancelled"] .device-status {
+  color: var(--danger);
+}
+
+body[data-state="waiting"] .select-btn,
+body[data-state="sending"] .select-btn {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+@keyframes send-ring-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body[data-state="waiting"] .ring {
+    animation: none;
+  }
+}
