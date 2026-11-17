@@ -1,7 +1,7 @@
 """Allow running with: python -m vishare_quick.
 
-A frozen executable launched without arguments opens the local receiver
-interface, so a file-manager double-click does something useful instead of
+A frozen executable launched without arguments opens the local interface in an
+app window, so a file-manager double-click does something useful instead of
 printing help and closing the console.
 """
 

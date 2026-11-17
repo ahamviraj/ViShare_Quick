@@ -1,7 +1,7 @@
-"""Loopback-only browser interface for the ViShare Quick receiver.
+"""Loopback-only interface for the ViShare Quick receiver and sender.
 
-The desktop interface is intentionally plain: a local HTTP server serves a
-small set of static screens and a JSON API to the user's own browser. The
+The interface is intentionally plain: a local HTTP server serves a small set of
+static screens and a JSON API to the app window or the user's own browser. The
 server binds to ``127.0.0.1`` only, every API call needs a fresh per-run token,
 and cross-origin requests are neither allowed nor advertised.
 
@@ -127,7 +127,13 @@ class UiHTTPServer(ThreadingHTTPServer):
         self.service = service
         self.send_service = send_service
         self.token = token
+        self.stop_event = threading.Event()
         super().__init__(server_address, request_handler)
+
+    def shutdown(self) -> None:
+        """Stop the serve loop and wake the desktop window watcher."""
+        super().shutdown()
+        self.stop_event.set()
 
     def snapshot(self) -> dict[str, Any]:
         """Merge the receiver and sender snapshots for the local pages."""
@@ -518,9 +524,10 @@ def run_ui(
     port: int = 0,
     download_dir: str | None = None,
     device_name: str = "ViShare Quick",
-    open_browser: bool = True,
+    open_browser: bool = False,
+    use_window: bool = True,
 ) -> int:
-    """Serve the interface until interrupted, then stop the receiver."""
+    """Serve the interface in an app window, browser, or headless mode."""
     service = ReceiveService(
         download_dir if download_dir is not None else default_download_dir(),
         device_name,
@@ -528,19 +535,43 @@ def run_ui(
     send_service = SendService(device_name=service.device_name)
     server = create_server(service, send_service=send_service, port=port)
     url = f"http://127.0.0.1:{server.server_address[1]}/"
+    server_thread = threading.Thread(
+        target=server.serve_forever,
+        kwargs={"poll_interval": 0.25},
+        name="vishare-quick-ui-server",
+        daemon=True,
+    )
+    server_thread.start()
     print(f"ViShare Quick interface: {url}", flush=True)
     print(f"Downloads folder: {service.download_dir}", flush=True)
-    print("Keep this window open while receiving. Press Ctrl+C to stop.", flush=True)
-    if open_browser:
-        threading.Timer(0.4, lambda: webbrowser.open(url)).start()
     try:
-        server.serve_forever(poll_interval=0.25)
+        if use_window and not open_browser:
+            print("Close the app window or press Ctrl+C to stop.", flush=True)
+            from vishare_quick.desktop import WindowUnavailable, run_app_window
+
+            try:
+                run_app_window(server, url)
+                return 0
+            except WindowUnavailable as exc:
+                print(f"In-app window unavailable: {exc}", flush=True)
+                print("Falling back to the default browser.", flush=True)
+                webbrowser.open(url)
+        else:
+            print(
+                "Keep this window open while receiving. Press Ctrl+C to stop.",
+                flush=True,
+            )
+            if open_browser:
+                threading.Timer(0.4, lambda: webbrowser.open(url)).start()
+        server_thread.join()
     except KeyboardInterrupt:
         print("\nStopping ViShare Quick.")
     finally:
         send_service.stop()
         service.stop()
+        server.shutdown()
         server.server_close()
+        server_thread.join(timeout=2.0)
     return 0
 
 
@@ -548,13 +579,21 @@ def main(argv: list[str] | None = None) -> int:
     """Run the UI as a standalone command."""
     parser = argparse.ArgumentParser(
         prog="vishare ui",
-        description="Open the local graphical receiver interface.",
+        description="Open the local graphical interface in an app window.",
     )
     parser.add_argument(
         "--port", type=int, default=0, help="local TCP port (0 chooses one)"
     )
-    parser.add_argument(
-        "--no-browser", action="store_true", help="do not open a browser window"
+    display = parser.add_mutually_exclusive_group()
+    display.add_argument(
+        "--browser",
+        action="store_true",
+        help="open the interface in the default browser instead of an app window",
+    )
+    display.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="run the local server without opening an app window or browser",
     )
     parser.add_argument(
         "--download-dir", metavar="DIR", help="destination directory for received files"
@@ -570,7 +609,8 @@ def main(argv: list[str] | None = None) -> int:
             port=args.port,
             download_dir=args.download_dir,
             device_name=args.name.strip(),
-            open_browser=not args.no_browser,
+            open_browser=args.browser,
+            use_window=not (args.browser or args.no_browser),
         )
     except (RuntimeError, ValueError, OSError) as exc:
         print(f"Interface failed to start: {exc}", file=sys.stderr)

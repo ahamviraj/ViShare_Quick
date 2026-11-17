@@ -9,6 +9,7 @@
 | Alpha 0.5 | Released | Multi-page local interface for the file receiver: home, receive, PIN/consent, progress, result, settings, activity log, and finished result view |
 | Alpha 0.6 | Released | CLI sender: peer discovery, UKEY2 client role, explicit PIN gate, authenticated 512 KiB streaming, multi-file and chunked transfers, cancel, linger, and fail-closed cleanup |
 | Alpha 0.7 | Released | Local Send interface: browser and drag/drop staging, nearby receiver list, PIN gate, per-file progress, cancel, retry, and fail-closed cleanup |
+| Alpha 0.8 | Released | Native app window for the local interface, with `--browser` and headless modes plus a browser fallback; per-user Windows installer and Debian/Ubuntu package with searchable menu entries |
 | Future receiver milestone | Not started | Verified peer identity and broader device/file-format coverage |
 | Later sender milestone | Not started | Broader sender hardening |
 
@@ -33,6 +34,17 @@ discovered receivers, keeps the explicit PIN gate, shows per-file progress, and 
 retry page. Staged copies and partial uploads are removed on clear, reset, cancel, or shutdown. The
 implementation and verification record are in
 [docs/ALPHA_0.7_SEND_INTERFACE.md](ALPHA_0.7_SEND_INTERFACE.md).
+
+`alpha_0.8` wraps the loopback interface in a native app window, using Edge WebView2 on Windows
+and GTK/WebKitGTK on Linux when available. The window owns the foreground; the HTTP server runs on a
+background thread and shuts down when the window closes or **Stop interface** is selected.
+`--browser` restores the previous external-browser behavior, `--no-browser` remains headless, and
+launch falls back to the browser if no webview backend can start. The Windows installer places the
+frozen executable under the current user's local application data, creates a **ViShare Quick** Start
+Menu shortcut for Windows Search, and registers an uninstaller. The Linux `deb` package installs the
+binary under `/usr/bin`, adds a desktop entry and icon for application-menu search, and uses the
+normal package-manager uninstall path. Release builds produce installers and portable executables
+for both platforms.
 
 The protocol implementation still does not verify peer identity, and chunked (multi-frame) BYTES
 payloads and text-only shares are not reassembled by the receiver into files.

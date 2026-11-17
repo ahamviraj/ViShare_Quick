@@ -39,15 +39,104 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e . pyinstaller
+      - name: Install Linux webview build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gir1.2-webkit2-4.1 gir1.2-soup-3.0
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
-      - name: Package CLI
-        run: pyinstaller --clean --noconfirm --onefile --name vishare-quick --paths src --collect-data vishare_quick.ui src/vishare_quick/__main__.py
+      - name: Package CLI (Windows)
+        if: runner.os == 'Windows'
+        run: pyinstaller --clean --noconfirm --onefile --name vishare-quick --icon installer/vishare-quick.ico --paths src --collect-data vishare_quick.ui src/vishare_quick/__main__.py
+      - name: Package CLI (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          pyinstaller --clean --noconfirm --onefile --name vishare-quick --paths src \
+            --collect-data vishare_quick.ui \
+            --additional-hooks-dir installer/linux \
+            --hidden-import webview.platforms.gtk \
+            --hidden-import gi.repository.WebKit2 \
+            --hidden-import gi.repository.Soup \
+            src/vishare_quick/__main__.py
+      - name: Install Inno Setup
+        if: runner.os == 'Windows'
+        run: choco install innosetup --no-progress -y
+      - name: Build Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = python -c "import vishare_quick; print(vishare_quick.__version__)"
+          if ($version -match '(\d+)\.(\d+)') {
+            $numericVersion = "$($Matches[1]).$($Matches[2]).0.0"
+          } else {
+            $numericVersion = "0.0.0.0"
+          }
+          $iscc = @(
+            "${env:ProgramFiles}\Inno Setup 6\ISCC.exe",
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          ) | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
+          if (-not $iscc) { throw "ISCC.exe was not found" }
+          & $iscc "/DAppVersion=$version" "/DVersionInfoVersion=$numericVersion" "installer\vishare-quick.iss"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build Linux installer
+        if: runner.os == 'Linux'
+        run: |
+          version=$(python -c "import vishare_quick; print(vishare_quick.__version__)")
+          deb_version="${version#alpha_}"
+          case "$deb_version" in
+            *.*.*) ;;
+            *.*) deb_version="$deb_version.0" ;;
+            *) deb_version="$deb_version.0.0" ;;
+          esac
+          root="build/deb/vishare-quick"
+          rm -rf "$root"
+          install -Dm755 dist/vishare-quick "$root/usr/bin/vishare-quick"
+          install -Dm644 installer/linux/vishare-quick.desktop "$root/usr/share/applications/vishare-quick.desktop"
+          install -Dm644 installer/linux/vishare-quick.png "$root/usr/share/icons/hicolor/256x256/apps/vishare-quick.png"
+          install -d "$root/DEBIAN"
+          sed "s/__VERSION__/$deb_version/" installer/linux/control > "$root/DEBIAN/control"
+          install -m755 installer/linux/postinst "$root/DEBIAN/postinst"
+          install -m755 installer/linux/postrm "$root/DEBIAN/postrm"
+          dpkg-deb --build --root-owner-group "$root" "dist/vishare-quick_${deb_version}_amd64.deb"
+      - name: Verify Linux app window
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y xvfb x11-utils
+          Xvfb :99 -screen 0 1280x1024x24 &
+          xvfb_pid=$!
+          app_pid=""
+          trap 'test -z "$app_pid" || kill "$app_pid" 2>/dev/null || true; kill "$xvfb_pid" 2>/dev/null || true' EXIT
+          sleep 2
+          DISPLAY=:99 NO_AT_BRIDGE=1 GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 \
+            dist/vishare-quick ui --port 18765 &
+          app_pid=$!
+          found=0
+          for _ in $(seq 1 20); do
+            if DISPLAY=:99 xwininfo -root -tree 2>/dev/null | grep -q '"ViShare Quick"'; then
+              found=1
+              break
+            fi
+            sleep 1
+          done
+          test "$found" = "1"
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.output_file }}
+      - name: Upload Windows installer
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: vishare-quick-windows-installer
+          path: installer/output/*.exe
+      - name: Upload Linux installer
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: vishare-quick-linux-installer
+          path: dist/*.deb
 
   publish:
     if: startsWith(github.ref, 'refs/tags/')

@@ -1,21 +1,39 @@
 # ViShare_Quick
 
-**Package:** `alpha_0.7` (research build)\
+**Package:** `alpha_0.8` (research build)\
 **Target:** Windows / Linux · Python 3.10+
 
 ## Download
 
-Prebuilt single-file executables are attached to the release:
+Prebuilt installers and portable packages are attached to the release:
 
-- Windows x64: `vishare-quick.exe`
-- Linux x64: `vishare-quick` (x86_64, glibc 2.35 or newer)
+- Windows x64 installer: `ViShare-Quick-Setup-alpha_0.8.exe`
+- Windows x64 portable: `vishare-quick.exe`
+- Linux x64 installer: `vishare-quick_0.8.0_amd64.deb`
+- Linux x64 portable: `vishare-quick` (x86_64, glibc 2.35 or newer)
 
-Both are self-contained PyInstaller builds with the same local interface and command-line features.
-They use the same explicit PIN confirmation and consent prompts. Launch the executable with no
-arguments (or double-click it on Windows) to open the local graphical interface. The command-line
-commands below remain available for scripted and diagnostic use.
+The Windows installer installs per-user without an administrator prompt, adds a searchable Start
+Menu entry named **ViShare Quick**, and registers an uninstaller under **Settings → Apps**. The
+portable executable remains available for users who do not want an installation.
 
-Linux downloads do not keep the executable bit, so set it once:
+The Linux `deb` package installs `/usr/bin/vishare-quick`, adds a searchable application-menu entry
+named **ViShare Quick**, and registers normal package-manager uninstall metadata. The portable Linux
+binary can be run directly without installing.
+
+Both platforms are self-contained PyInstaller packages with the same local interface and
+command-line features. They use the same explicit PIN confirmation and consent prompts. Launch the
+executable with no arguments (or double-click it on Windows) to open the local graphical interface.
+The command-line commands below remain available for scripted and diagnostic use.
+
+Linux (Debian/Ubuntu):
+
+```bash
+sudo apt install ./vishare-quick_0.8.0_amd64.deb
+vishare-quick ui
+vishare-quick --version
+```
+
+Linux portable downloads do not keep the executable bit, so set it once:
 
 ```bash
 chmod +x vishare-quick
@@ -44,6 +62,20 @@ The command line remains available for scripted and diagnostic use, including bo
 inspection, the opt-in P256_SHA512 UKEY2 handshake, encrypted-frame inspection, paired-key probes,
 the consent-gated `--receive-files` receiver, and the `peers`/`send` Quick Share sender. The local
 interface also sends files through the **Send** page.
+
+## Highlights in `alpha_0.8`
+
+- **Native app window**: `vishare ui` and the no-argument executable launch the local interface in a
+  window instead of opening a browser tab. Linux falls back to the browser when GTK/WebKit is not
+  available, and `--browser` preserves the previous browser mode.
+- **Windows installer**: installs per-user without administrator rights, creates a searchable
+  **ViShare Quick** Start Menu entry, adds an optional desktop shortcut, and registers an uninstaller.
+- **Linux installer**: a Debian/Ubuntu `deb` package installs the application, icon, and searchable
+  application-menu entry. Portable executables remain available for both platforms.
+- **Clean shutdown**: closing the app window stops advertising and shuts down the local server;
+  **Settings → Stop interface** also closes the window.
+- **Verification**: 405 unit tests, packaged Windows and Linux builds, Windows installer
+  install/launch/uninstall checks, and Linux package checks.
 
 ## Highlights in `alpha_0.7`
 
@@ -102,11 +134,16 @@ interface also sends files through the **Send** page.
 ## Local interface (`ui`)
 
 `vishare ui` starts the local interface at `http://127.0.0.1:<port>/` and serves both the receiver
-and sender pages. The executable opens it automatically when launched without arguments;
-`--no-browser` suppresses the tab. The server binds only to loopback, uses a fresh random token for
-each run, sends a restrictive Content-Security-Policy, and never enables CORS. Every page,
+and sender pages in a native app window. The executable opens the same window when launched without
+arguments. Use `--browser` to open the interface in the default browser instead, or `--no-browser` to
+run the local server without opening either. The server binds only to loopback, uses a fresh random
+token for each run, sends a restrictive Content-Security-Policy, and never enables CORS. Every page,
 stylesheet, script, icon, and the Varela Round font is bundled, so the interface works without an
 internet connection.
+
+The app window uses Edge WebView2 on Windows; current Windows 10/11 installations normally provide
+it already. Linux in-app windows require GTK 3 and WebKitGTK. If the webview backend is unavailable,
+the default launch falls back to the browser instead of failing.
 
 Pages:
 
@@ -128,13 +165,15 @@ Pages:
   interface**.
 
 The activity panel is status text only; it never shows peer payload IDs, keys, or file contents.
-Closing the browser tab does not stop advertising: use **Settings → Stop interface** or press
-Ctrl+C in the terminal that launched the app.
+Closing the app window stops advertising and shuts down the local server. In browser or headless
+mode, closing the tab does not stop advertising: use **Settings → Stop interface** or press Ctrl+C
+in the terminal that launched the app.
 
 Useful options:
 
 ```powershell
 python -m vishare_quick ui --download-dir D:\Incoming
+python -m vishare_quick ui --browser
 python -m vishare_quick ui --name "Desk PC" --port 8765 --no-browser
 ```
 
@@ -146,6 +185,7 @@ python -m vishare_quick doctor
 python -m vishare_quick mdns-check --seconds 30
 python -m vishare_quick ui
 python -m vishare_quick ui --download-dir D:\Incoming
+python -m vishare_quick ui --browser
 python -m vishare_quick ui --no-browser --port 8765
 python -m vishare_quick advertise --name "ViShare Quick" --seconds 120
 python -m vishare_quick advertise --name "ViShare Quick" --seconds 120 --inspect-frames
@@ -330,8 +370,9 @@ The encrypted-frame diagnostic and its limitations are described in
 - `alpha_0.5`: multi-page local interface for the same receiver (home, receive, PIN/consent, progress, result, settings), bundled offline assets, token-protected loopback server, explicit PIN and consent screens, progress/cancel/retry, activity log, saved-file result view, and functional settings; no protocol changes
 - `alpha_0.6`: CLI Quick Share sender (`peers`, `send`, `--handshake-only`), UKEY2 client role, sender key schedule, mDNS peer discovery, explicit PIN gate, 512 KiB authenticated streaming, keep-alives, progress, cancel, linger, and fail-closed cleanup; verified single-file, multi-file, chunked, and spaced-name transfers on one Android 14 XPad
 - `alpha_0.7`: local **Send** page with browser file picker and drag/drop staging, nearby receiver list, explicit PIN confirmation, per-file progress, cancel, retry, failure routing, and fail-closed cleanup; sender device name follows Settings
+- `alpha_0.8`: native app window for the local interface, browser fallback and explicit `--browser`/headless modes, clean window-close shutdown, per-user Windows installer with searchable Start Menu entry, and a Debian/Ubuntu package with a searchable application-menu entry
 - Future milestone: verify multi-file and text-only shares across more devices and display formats, including the browser sender on a real Android device
 - Later milestone: broader sender hardening
 
-Released as `alpha_0.7`. File reception and sending have been demonstrated on one trusted local
+Released as `alpha_0.8`. File reception and sending have been demonstrated on one trusted local
 network; this is not a claim of peer identity verification or broad interoperability.

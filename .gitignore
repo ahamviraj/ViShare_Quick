@@ -16,8 +16,9 @@ ENV/
 .coverage
 htmlcov/
 
-# PyInstaller
+# PyInstaller and Inno Setup
 *.spec
+installer/output/
 
 # Local protocol captures (may contain private sender and file metadata)
 .vishare-quick/

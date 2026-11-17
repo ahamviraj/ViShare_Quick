@@ -2,9 +2,11 @@ import http.client
 import json
 import threading
 import unittest
+from unittest.mock import patch
 from urllib.parse import quote
 
-from vishare_quick.ui_server import create_server
+from vishare_quick.desktop import WindowUnavailable
+from vishare_quick.ui_server import create_server, run_ui
 
 
 class FakeService:
@@ -14,7 +16,7 @@ class FakeService:
 
     def snapshot(self):
         return {
-            "version": "alpha_0.7",
+            "version": "alpha_0.8",
             "phase": self.phase,
             "active": self.phase == "advertising",
             "advertising": self.phase == "advertising",
@@ -71,7 +73,7 @@ class FakeSendService:
 
     def snapshot(self):
         return {
-            "version": "alpha_0.7",
+            "version": "alpha_0.8",
             "phase": self.phase,
             "active": False,
             "discovering": False,
@@ -181,7 +183,7 @@ class TestUiServer(unittest.TestCase):
         text = body.decode("utf-8")
         self.assertIn(self.server.token, text)
         self.assertNotIn("__VISHARE_TOKEN__", text)
-        self.assertIn("alpha_0.7", text)
+        self.assertIn("alpha_0.8", text)
 
     def test_state_requires_token_and_allows_loopback_hosts(self):
         status, _, _ = self.request("GET", "/api/state", token=False)
@@ -274,7 +276,7 @@ class TestUiServer(unittest.TestCase):
                 text = body.decode("utf-8")
                 self.assertIn(self.server.token, text)
                 self.assertNotIn("__VISHARE_TOKEN__", text)
-                self.assertIn("alpha_0.7", text)
+                self.assertIn("alpha_0.8", text)
 
     def test_path_traversal_is_not_served(self):
         for path in (
@@ -294,6 +296,7 @@ class TestUiServer(unittest.TestCase):
         self.assertEqual(status, 200)
         self.thread.join(timeout=3.0)
         self.assertFalse(self.thread.is_alive())
+        self.assertTrue(self.server.stop_event.is_set())
         self.assertEqual(self.fake.calls, [("stop",)])
 
 
@@ -413,6 +416,76 @@ class TestSendUiServer(unittest.TestCase):
         status, _, _ = self.request("/api/send/start", {"peer": 5})
         self.assertEqual(status, 400)
         self.assertEqual(self.send.calls, [])
+
+
+class FakeRunReceiveService:
+    def __init__(self, download_dir, device_name):
+        self.download_dir = download_dir
+        self.device_name = device_name
+        self.stopped = False
+
+    def stop(self):
+        self.stopped = True
+
+
+class FakeRunSendService:
+    def __init__(self, device_name):
+        self.device_name = device_name
+        self.stopped = False
+
+    def stop(self):
+        self.stopped = True
+
+
+class FakeRunServer:
+    last = None
+
+    def __init__(self, service, send_service, port):
+        self.server_address = ("127.0.0.1", 12345)
+        self.shutdown_called = False
+        self.closed = False
+        FakeRunServer.last = self
+
+    def serve_forever(self, poll_interval=0.5):
+        return None
+
+    def shutdown(self):
+        self.shutdown_called = True
+
+    def server_close(self):
+        self.closed = True
+
+
+class TestRunUiLifecycle(unittest.TestCase):
+    @patch("vishare_quick.ui_server.create_server", FakeRunServer)
+    @patch("vishare_quick.ui_server.SendService", FakeRunSendService)
+    @patch("vishare_quick.ui_server.ReceiveService", FakeRunReceiveService)
+    @patch("vishare_quick.desktop.run_app_window")
+    def test_defaults_to_the_app_window_and_cleans_up(self, window):
+        result = run_ui(download_dir="C:/Downloads")
+
+        self.assertEqual(result, 0)
+        window.assert_called_once()
+        self.assertEqual(window.call_args.args[1], "http://127.0.0.1:12345/")
+        self.assertTrue(FakeRunServer.last.shutdown_called)
+        self.assertTrue(FakeRunServer.last.closed)
+
+    @patch("vishare_quick.ui_server.create_server", FakeRunServer)
+    @patch("vishare_quick.ui_server.SendService", FakeRunSendService)
+    @patch("vishare_quick.ui_server.ReceiveService", FakeRunReceiveService)
+    @patch("vishare_quick.ui_server.webbrowser.open")
+    @patch(
+        "vishare_quick.desktop.run_app_window",
+        side_effect=WindowUnavailable("no backend"),
+    )
+    def test_falls_back_to_the_browser_when_no_window_is_available(
+        self, window, browser_open
+    ):
+        result = run_ui(download_dir="C:/Downloads")
+
+        self.assertEqual(result, 0)
+        browser_open.assert_called_once_with("http://127.0.0.1:12345/")
+        self.assertTrue(FakeRunServer.last.shutdown_called)
 
 
 if __name__ == "__main__":

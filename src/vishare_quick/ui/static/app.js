@@ -1606,7 +1606,7 @@
       // The server may close the connection before the response is read.
     }
     setOnline(false);
-    toast("ViShare Quick has stopped. You can close this tab.");
+    toast("ViShare Quick has stopped. You can close this window.");
   }
 
   function toast(message, kind) {

@@ -1,4 +1,4 @@
-"""Command-line interface for ViShare_Quick alpha_0.7."""
+"""Command-line interface for ViShare_Quick alpha_0.8."""
 
 import argparse
 import sys
@@ -116,17 +116,28 @@ def build_parser() -> argparse.ArgumentParser:
 
     ui = subparsers.add_parser(
         "ui",
-        help="open the local graphical receiver interface in a browser",
+        help="open the local graphical interface in an app window",
         description=(
-            "Start the loopback-only receiver interface. It advertises the same "
-            "Quick Share endpoint as 'advertise --receive-files' and requires the "
-            "same explicit PIN comparison and file consent. The server binds to "
-            "127.0.0.1 and uses a per-run token; it never accepts a transfer "
-            "automatically."
+            "Start the loopback-only receiver and sender interface in a native app "
+            "window. If no webview backend is available, it falls back to the "
+            "default browser. The interface advertises the same Quick Share "
+            "endpoint as 'advertise --receive-files' and requires the same explicit "
+            "PIN comparison and file consent. The server binds to 127.0.0.1 and "
+            "uses a per-run token; it never accepts a transfer automatically."
         ),
     )
     ui.add_argument("--port", type=int, default=0, help="local TCP port (0 chooses an available port)")
-    ui.add_argument("--no-browser", action="store_true", help="do not open a browser window")
+    display = ui.add_mutually_exclusive_group()
+    display.add_argument(
+        "--browser",
+        action="store_true",
+        help="open the interface in the default browser instead of an app window",
+    )
+    display.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="run the local server without opening an app window or browser",
+    )
     ui.add_argument(
         "--download-dir",
         metavar="DIR",
@@ -268,7 +279,8 @@ def main(argv: list[str] | None = None) -> int:
                 port=args.port,
                 download_dir=args.download_dir,
                 device_name=args.name.strip(),
-                open_browser=not args.no_browser,
+                open_browser=args.browser,
+                use_window=not (args.browser or args.no_browser),
             )
         except (RuntimeError, ValueError, OSError) as exc:
             print(f"Interface failed to start: {exc}", file=sys.stderr)

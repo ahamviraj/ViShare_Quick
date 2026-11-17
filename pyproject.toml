@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vishare-quick"
-version = "0.7.0a0"
+version = "0.8.0a0"
 description = "Experimental Android Quick Share protocol inspection and UKEY2 foundation"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "UNLICENSED" }
 authors = [{ name = "ViShare_Quick contributors" }]
-dependencies = ["zeroconf>=0.132", "cryptography>=41.0"]
+dependencies = ["zeroconf>=0.132", "cryptography>=41.0", "pywebview>=6.0"]
 
 [project.optional-dependencies]
 dev = ["pytest>=7.4"]

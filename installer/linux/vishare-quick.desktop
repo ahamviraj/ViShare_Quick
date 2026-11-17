@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=ViShare Quick
+GenericName=Local file transfer
+Comment=Send and receive files locally with Quick Share
+Exec=vishare-quick
+TryExec=vishare-quick
+Icon=vishare-quick
+Terminal=false
+Categories=Utility;
+Keywords=Quick Share;file transfer;send;receive;local;
+StartupNotify=true
