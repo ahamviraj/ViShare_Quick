@@ -25,10 +25,27 @@ a = Analysis(
     noarchive=False,
     optimize=0,
 )
+SYSTEM_LIBRARIES = (
+    "libglib-2.0",
+    "libgobject-2.0",
+    "libgio-2.0",
+    "libgmodule-2.0",
+    "libgthread-2.0",
+    "libgirepository-",
+    "libgtk-3",
+    "libgdk-3",
+    "libpango",
+    "libatk-",
+    "libsoup-",
+    "libwebkit2gtk-",
+    "libjavascriptcoregtk-",
+    "libstdc++",
+    "libgcc_s",
+)
 a.binaries = [
     binary
     for binary in a.binaries
-    if os.path.basename(binary[0]) not in {"libstdc++.so.6", "libgcc_s.so.1"}
+    if not os.path.basename(binary[0]).startswith(SYSTEM_LIBRARIES)
 ]
 pyz = PYZ(a.pure)
 
