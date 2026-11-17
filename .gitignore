@@ -18,6 +18,7 @@ htmlcov/
 
 # PyInstaller and Inno Setup
 *.spec
+!installer/linux/vishare-quick.spec
 installer/output/
 
 # Local protocol captures (may contain private sender and file metadata)

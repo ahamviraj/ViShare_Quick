@@ -55,14 +55,7 @@ jobs:
         run: pyinstaller --clean --noconfirm --onefile --name vishare-quick --icon installer/vishare-quick.ico --paths src --collect-data vishare_quick.ui src/vishare_quick/__main__.py
       - name: Package CLI (Linux)
         if: runner.os == 'Linux'
-        run: |
-          pyinstaller --clean --noconfirm --onefile --name vishare-quick --paths src \
-            --collect-data vishare_quick.ui \
-            --additional-hooks-dir installer/linux \
-            --hidden-import webview.platforms.gtk \
-            --hidden-import gi.repository.WebKit2 \
-            --hidden-import gi.repository.Soup \
-            src/vishare_quick/__main__.py
+        run: pyinstaller --clean --noconfirm --distpath dist --workpath build installer/linux/vishare-quick.spec
       - name: Install Inno Setup
         if: runner.os == 'Windows'
         run: choco install innosetup --no-progress -y
