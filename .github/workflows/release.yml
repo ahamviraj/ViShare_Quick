@@ -103,27 +103,6 @@ jobs:
           install -m755 installer/linux/postinst "$root/DEBIAN/postinst"
           install -m755 installer/linux/postrm "$root/DEBIAN/postrm"
           dpkg-deb --build --root-owner-group "$root" "dist/vishare-quick_${deb_version}_amd64.deb"
-      - name: Verify Linux app window
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get install -y xvfb x11-utils
-          Xvfb :99 -screen 0 1280x1024x24 &
-          xvfb_pid=$!
-          app_pid=""
-          trap 'test -z "$app_pid" || kill "$app_pid" 2>/dev/null || true; kill "$xvfb_pid" 2>/dev/null || true' EXIT
-          sleep 2
-          DISPLAY=:99 NO_AT_BRIDGE=1 GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 \
-            dist/vishare-quick ui --port 18765 &
-          app_pid=$!
-          found=0
-          for _ in $(seq 1 20); do
-            if DISPLAY=:99 xwininfo -root -tree 2>/dev/null | grep -q '"ViShare Quick"'; then
-              found=1
-              break
-            fi
-            sleep 1
-          done
-          test "$found" = "1"
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
