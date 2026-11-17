@@ -296,7 +296,7 @@ class TestUiServer(unittest.TestCase):
         self.assertEqual(status, 200)
         self.thread.join(timeout=3.0)
         self.assertFalse(self.thread.is_alive())
-        self.assertTrue(self.server.stop_event.is_set())
+        self.assertTrue(self.server.stop_event.wait(timeout=3.0))
         self.assertEqual(self.fake.calls, [("stop",)])
 
 
