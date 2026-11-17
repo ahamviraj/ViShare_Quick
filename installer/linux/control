@@ -9,4 +9,4 @@ Description: Local Quick Share file transfer for Windows and Linux
  ViShare Quick provides a local-only interface for sending and receiving
  files with Android Quick Share. It uses explicit PIN comparison and file
  consent, and never requires a Google account or cloud relay.
-Depends: libc6 (>= 2.35), libgirepository-1.0-1, libgtk-3-0, libwebkit2gtk-4.1-0 | libwebkit2gtk-4.0-37
+Depends: libc6 (>= 2.35), libgtk-3-0, libwebkit2gtk-4.1-0 | libwebkit2gtk-4.0-37

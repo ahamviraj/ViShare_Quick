@@ -31,7 +31,6 @@ SYSTEM_LIBRARIES = (
     "libgio-2.0",
     "libgmodule-2.0",
     "libgthread-2.0",
-    "libgirepository-",
     "libgtk-3",
     "libgdk-3",
     "libpango",
