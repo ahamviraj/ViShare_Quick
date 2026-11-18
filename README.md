@@ -5,7 +5,8 @@
 
 ## Download
 
-Prebuilt installers and portable packages are attached to the release:
+Prebuilt installers and portable packages are attached to the
+[`alpha_0.8` release](https://github.com/ahamviraj/ViShare_Quick/releases/tag/alpha_0.8):
 
 - Windows x64 installer: `ViShare-Quick-Setup-alpha_0.8.exe`
 - Windows x64 portable: `vishare-quick.exe`
@@ -17,10 +18,11 @@ Menu entry named **ViShare Quick**, and registers an uninstaller under **Setting
 portable executable remains available for users who do not want an installation.
 
 The Linux `deb` package installs `/usr/bin/vishare-quick`, adds a searchable application-menu entry
-named **ViShare Quick**, and registers normal package-manager uninstall metadata. The portable Linux
-binary can be run directly without installing.
+named **ViShare Quick**, and registers normal package-manager uninstall metadata. Its dependencies
+include GTK 3 and WebKitGTK for the native window; if those are unavailable, the app falls back to
+the browser. The portable Linux binary can be run directly without installing.
 
-Both platforms are self-contained PyInstaller packages with the same local interface and
+Both platforms bundle Python and the application runtime with the same local interface and
 command-line features. They use the same explicit PIN confirmation and consent prompts. Launch the
 executable with no arguments (or double-click it on Windows) to open the local graphical interface.
 The command-line commands below remain available for scripted and diagnostic use.
