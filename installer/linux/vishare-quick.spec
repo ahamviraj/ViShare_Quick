@@ -35,8 +35,10 @@ KEEP_SYSTEM_LIBRARIES = (
 
 
 def is_system_library(binary):
-    source = binary[0].replace("\\", "/")
-    name = os.path.basename(source)
+    name = os.path.basename(binary[0])
+    source = binary[1].replace("\\", "/")
+    if name.startswith(("libstdc++", "libgcc_s")):
+        return True
     if name.startswith(KEEP_SYSTEM_LIBRARIES):
         return False
     return (
