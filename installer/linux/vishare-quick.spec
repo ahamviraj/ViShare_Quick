@@ -25,26 +25,28 @@ a = Analysis(
     noarchive=False,
     optimize=0,
 )
-SYSTEM_LIBRARIES = (
-    "libglib-2.0",
-    "libgobject-2.0",
-    "libgio-2.0",
-    "libgmodule-2.0",
-    "libgthread-2.0",
-    "libgtk-3",
-    "libgdk-3",
-    "libpango",
-    "libatk-",
-    "libsoup-",
-    "libwebkit2gtk-",
-    "libjavascriptcoregtk-",
-    "libstdc++",
-    "libgcc_s",
+
+KEEP_SYSTEM_LIBRARIES = (
+    "libpython",
+    "libgirepository-",
+    "libssl",
+    "libcrypto",
 )
+
+
+def is_system_library(binary):
+    source = binary[0].replace("\\", "/")
+    name = os.path.basename(source)
+    if name.startswith(KEEP_SYSTEM_LIBRARIES):
+        return False
+    return (
+        "/usr/lib/x86_64-linux-gnu/" in source
+        or "/lib/x86_64-linux-gnu/" in source
+    )
+
+
 a.binaries = [
-    binary
-    for binary in a.binaries
-    if not os.path.basename(binary[0]).startswith(SYSTEM_LIBRARIES)
+    binary for binary in a.binaries if not is_system_library(binary)
 ]
 pyz = PYZ(a.pure)
 
