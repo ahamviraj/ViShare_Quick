@@ -11,7 +11,7 @@
 | Alpha 0.7 | Released | Local Send interface: browser and drag/drop staging, nearby receiver list, PIN gate, per-file progress, cancel, retry, and fail-closed cleanup |
 | Alpha 0.8 | Released | Native app window for the local interface, with `--browser` and headless modes plus a browser fallback; per-user Windows installer and Debian/Ubuntu package with searchable menu entries |
 | Alpha 0.9 | Released | Windows background mode: tray icon, global `Ctrl+Alt+V` shortcut, close-to-tray, single-instance foregrounding, sign-in autostart, and optional pinning help |
-| Alpha 0.10 | Published (Windows assets in `alpha_0.9` release) | Send-only Windows Nearby Sharing handoff through the system share sheet, with explicit availability and failure reporting |
+| Alpha 0.10 | Released | Send-only Windows Nearby Sharing handoff through the system share sheet, with explicit availability and failure reporting |
 | Future receiver milestone | Not started | Verified peer identity and broader device/file-format coverage |
 | Later sender milestone | Not started | Broader sender hardening |
 

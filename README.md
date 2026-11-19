@@ -1,18 +1,17 @@
 # ViShare_Quick
 
-**Package:** `alpha_0.10` (Windows build published under the `alpha_0.9` release label)\
+**Package:** `alpha_0.10`\
 **Target:** Windows / Linux · Python 3.10+
 
 ## Download
 
-The latest published release label is
-[`alpha_0.9`](https://github.com/ahamviraj/ViShare_Quick/releases/tag/alpha_0.9).
-Its Windows assets are built from `alpha_0.10`; the release label remains `alpha_0.9`. Linux assets
-remain from the `alpha_0.9` build. Its prebuilt installers and portable packages are:
+The latest published release is
+[`alpha_0.10`](https://github.com/ahamviraj/ViShare_Quick/releases/tag/alpha_0.10).
+Its prebuilt installers and portable packages are:
 
-- Windows x64 installer: `ViShare-Quick-Setup-alpha_0.9.exe`
+- Windows x64 installer: `ViShare-Quick-Setup-alpha_0.10.exe`
 - Windows x64 portable: `vishare-quick.exe`
-- Linux x64 installer: `vishare-quick_0.9.0_amd64.deb`
+- Linux x64 installer: `vishare-quick_0.10.0_amd64.deb`
 - Linux x64 portable: `vishare-quick` (x86_64, glibc 2.35 or newer)
 
 The Windows installer installs per-user without an administrator prompt, adds a searchable Start
@@ -432,7 +431,6 @@ The encrypted-frame diagnostic and its limitations are described in
 - Future milestone: verify multi-file and text-only shares across more devices and display formats, including the browser sender on a real Android device
 - Later milestone: broader sender hardening
 
-The latest published release label is `alpha_0.9`; its Windows assets contain the `alpha_0.10`
-build, while Linux assets remain `alpha_0.9`. File reception and sending have been demonstrated on
+The latest published release is `alpha_0.10`. File reception and sending have been demonstrated on
 one trusted local network; this is not a claim of peer identity verification or broad
 interoperability.
