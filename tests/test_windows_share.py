@@ -2,9 +2,13 @@ import asyncio
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from vishare_quick import windows_share
+
+_NT_OS = SimpleNamespace(name="nt")
+_POSIX_OS = SimpleNamespace(name="posix")
 
 
 class FakeDeferral:
@@ -94,7 +98,7 @@ class TestWindowsShareStatus(unittest.TestCase):
         windows_share._reset_for_tests()
 
     def test_non_windows_status_is_hidden(self):
-        with patch.object(windows_share.os, "name", "posix"):
+        with patch.object(windows_share, "os", _POSIX_OS):
             result = windows_share.status(refresh=True)
 
         self.assertFalse(result["supported"])
@@ -103,7 +107,7 @@ class TestWindowsShareStatus(unittest.TestCase):
         self.assertIn("only available on Windows", result["reason"])
 
     def test_missing_winrt_is_unavailable(self):
-        with patch.object(windows_share.os, "name", "nt"), patch.object(
+        with patch.object(windows_share, "os", _NT_OS), patch.object(
             windows_share, "_load_winrt", return_value=None
         ):
             result = windows_share.status(refresh=True)
@@ -113,7 +117,7 @@ class TestWindowsShareStatus(unittest.TestCase):
         self.assertIn("not installed", result["reason"])
 
     def test_disabled_nearby_sharing_is_unavailable(self):
-        with patch.object(windows_share.os, "name", "nt"), patch.object(
+        with patch.object(windows_share, "os", _NT_OS), patch.object(
             windows_share, "_load_winrt", return_value=(object(), object())
         ), patch.object(
             windows_share,
@@ -127,7 +131,7 @@ class TestWindowsShareStatus(unittest.TestCase):
         self.assertEqual(result["reason"], "Turn it on.")
 
     def test_available_requires_an_app_window(self):
-        with patch.object(windows_share.os, "name", "nt"), patch.object(
+        with patch.object(windows_share, "os", _NT_OS), patch.object(
             windows_share, "_load_winrt", return_value=(object(), object())
         ), patch.object(
             windows_share,
@@ -142,7 +146,7 @@ class TestWindowsShareStatus(unittest.TestCase):
         self.assertIn("app window", result["reason"])
 
     def test_available_with_settings_and_window(self):
-        with patch.object(windows_share.os, "name", "nt"), patch.object(
+        with patch.object(windows_share, "os", _NT_OS), patch.object(
             windows_share, "_load_winrt", return_value=(object(), object())
         ), patch.object(
             windows_share,
@@ -169,18 +173,18 @@ class TestWindowsShareHandoff(unittest.TestCase):
         self.directory.cleanup()
 
     def test_non_windows_handoff_is_rejected(self):
-        with patch.object(windows_share.os, "name", "posix"):
+        with patch.object(windows_share, "os", _POSIX_OS):
             with self.assertRaises(windows_share.WindowsShareError):
                 windows_share.share_files([self.path])
 
     def test_empty_selection_is_rejected(self):
-        with patch.object(windows_share.os, "name", "nt"):
+        with patch.object(windows_share, "os", _NT_OS):
             with self.assertRaises(windows_share.WindowsShareError):
                 windows_share.share_files([])
 
     def test_missing_file_is_rejected(self):
         missing = Path(self.directory.name) / "missing.txt"
-        with patch.object(windows_share.os, "name", "nt"):
+        with patch.object(windows_share, "os", _NT_OS):
             with self.assertRaises(windows_share.WindowsShareError):
                 windows_share.share_files([missing])
 
@@ -217,7 +221,7 @@ class TestWindowsShareHandoff(unittest.TestCase):
 
     def test_handoff_uses_the_app_window_and_retains_the_session(self):
         interop = FakeInterop()
-        with patch.object(windows_share.os, "name", "nt"), patch.object(
+        with patch.object(windows_share, "os", _NT_OS), patch.object(
             windows_share, "_load_winrt", return_value=(interop, FakeStorageFile)
         ), patch(
             "vishare_quick.windows_background.find_window", return_value=123
@@ -232,7 +236,7 @@ class TestWindowsShareHandoff(unittest.TestCase):
     def test_show_error_is_translated_and_cleans_up(self):
         interop = FakeInterop()
         interop.error = RuntimeError("no share")
-        with patch.object(windows_share.os, "name", "nt"), patch.object(
+        with patch.object(windows_share, "os", _NT_OS), patch.object(
             windows_share, "_load_winrt", return_value=(interop, FakeStorageFile)
         ), patch(
             "vishare_quick.windows_background.find_window", return_value=123
