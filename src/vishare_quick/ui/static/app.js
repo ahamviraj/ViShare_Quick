@@ -836,6 +836,9 @@
     const devices = $("[data-send-devices]");
     const deviceText = $("[data-send-device-text]");
     const peerList = $("[data-send-peer-list]");
+    const windowsShare = $("[data-windows-share]");
+    const windowsStatus = $("[data-windows-share-status]");
+    const windowsButton = $('[data-action="windows-share"]');
     const error = $("[data-send-error]");
     if (!send) {
       setText(fileStatus, "Connecting…");
@@ -883,6 +886,23 @@
     const clear = $('[data-action="clear-files"]');
     if (clear) {
       clear.disabled = state.busy || files.length === 0;
+    }
+    const nearby = send.nearby_share || {};
+    if (windowsShare) {
+      windowsShare.hidden = !nearby.supported;
+    }
+    if (nearby.supported) {
+      setText(windowsStatus, nearby.reason || "");
+      if (windowsButton) {
+        windowsButton.disabled =
+          state.busy ||
+          !nearby.available ||
+          files.length === 0 ||
+          SEND_ACTIVE_PHASES.has(send.phase);
+        windowsButton.title = nearby.available
+          ? "Open the Windows share sheet"
+          : nearby.reason || "Windows sharing is unavailable.";
+      }
     }
   }
 
@@ -1495,6 +1515,18 @@
     });
   }
 
+  async function shareViaWindows() {
+    const send = sendSnapshot();
+    if (!send || (send.files || []).length === 0) {
+      toast("Select at least one file first.", "error");
+      return;
+    }
+    await postAction("/api/send/windows-share", {}, {
+      successMessage: "Choose a nearby device in the Windows share window.",
+      failureMessage: "The Windows share sheet could not be opened.",
+    });
+  }
+
   async function sendToPeer(peerKey) {
     const send = sendSnapshot();
     if (!send || (send.files || []).length === 0) {
@@ -1688,6 +1720,9 @@
         break;
       case "refresh-peers":
         refreshSendPeers();
+        break;
+      case "windows-share":
+        shareViaWindows();
         break;
       case "clear-files":
         clearSendFiles();

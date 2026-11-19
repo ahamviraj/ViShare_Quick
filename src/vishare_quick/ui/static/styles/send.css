@@ -290,6 +290,63 @@
   margin-top: 8px;
 }
 
+.windows-share {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px;
+  border-radius: var(--radius);
+  margin-bottom: 22px;
+}
+
+.windows-share-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.windows-share-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.windows-share-status {
+  color: var(--accent);
+  font-size: 10px;
+  opacity: 0.75;
+}
+
+.windows-share-btn {
+  flex-shrink: 0;
+  padding: 10px 16px;
+  border: none;
+  border-radius: var(--radius);
+  background-color: var(--accent);
+  color: var(--bg);
+  font-size: 11px;
+  font-weight: bold;
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease,
+    opacity 0.2s ease,
+    transform 0.1s ease;
+}
+
+.windows-share-btn:hover:not(:disabled) {
+  background-color: #eef2ff;
+}
+
+.windows-share-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.windows-share-btn:disabled {
+  opacity: 0.32;
+  cursor: not-allowed;
+}
+
 .send-error {
   width: 100%;
   margin: 4px 0 0;

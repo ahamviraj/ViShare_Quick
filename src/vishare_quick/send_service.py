@@ -27,7 +27,7 @@ from collections import deque
 from pathlib import Path
 from typing import Any, BinaryIO
 
-from vishare_quick import __version__
+from vishare_quick import __version__, windows_share
 from vishare_quick.file_transfer import safe_filename
 from vishare_quick.peer_discovery import DiscoveryError, Peer, PeerBrowser
 from vishare_quick.sender import (
@@ -163,6 +163,7 @@ class SendService:
                 "active": self._phase in _SEND_ACTIVE,
                 "discovering": self._discovering,
                 "device_name": self._device_name,
+                "nearby_share": windows_share.status(),
                 "files": files,
                 "total_size": sum(item["size"] for item in self._files),
                 "peers": [
@@ -435,6 +436,37 @@ class SendService:
         thread.start()
         return True
 
+    def share_via_windows(self) -> bool:
+        """Hand the staged files to the Windows share sheet."""
+        with self._lock:
+            if self._phase in _SEND_ACTIVE:
+                self._error = "Wait for the current send to finish."
+                return False
+            if self._reserved_bytes:
+                self._error = "Wait for the selected files to finish uploading."
+                return False
+            paths = [item["path"] for item in self._files]
+            if not paths:
+                self._error = "Select at least one file to share."
+                return False
+            self._error = None
+        try:
+            windows_share.share_files(paths)
+        except windows_share.WindowsShareError as exc:
+            with self._lock:
+                self._error = str(exc)
+                self._log("Windows sharing is unavailable.")
+            return False
+        except Exception:  # noqa: BLE001 - surfaced to the local UI only
+            with self._lock:
+                self._error = "The Windows share sheet could not be opened."
+                self._log("Windows sharing failed.")
+            return False
+        with self._lock:
+            self._error = None
+            self._log("Opened the Windows share sheet.")
+        return True
+
     def _run_send(self, peer: Peer, paths: list[Path]) -> None:
         try:
             result = send_files(
@@ -625,5 +657,6 @@ class SendService:
             self._phase = "idle"
             staging = self._staging_dir
             self._staging_dir = None
+        windows_share.shutdown()
         if staging is not None:
             shutil.rmtree(staging, ignore_errors=True)

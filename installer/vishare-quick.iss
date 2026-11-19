@@ -1,9 +1,9 @@
 #define AppName "ViShare Quick"
 #ifndef AppVersion
-  #define AppVersion "alpha_0.9"
+  #define AppVersion "alpha_0.10"
 #endif
 #ifndef VersionInfoVersion
-  #define VersionInfoVersion "0.9.0.0"
+  #define VersionInfoVersion "0.10.0.0"
 #endif
 #ifndef SourceExe
   #define SourceExe "..\dist\vishare-quick.exe"

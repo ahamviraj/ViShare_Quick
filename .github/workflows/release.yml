@@ -52,7 +52,7 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Package CLI (Windows)
         if: runner.os == 'Windows'
-        run: pyinstaller --clean --noconfirm --onefile --name vishare-quick --icon installer/vishare-quick.ico --paths src --collect-data vishare_quick.ui --add-data "installer/vishare-quick.ico;installer" --hidden-import pystray._win32 src/vishare_quick/__main__.py
+        run: pyinstaller --clean --noconfirm --onefile --name vishare-quick --icon installer/vishare-quick.ico --paths src --collect-data vishare_quick.ui --add-data "installer/vishare-quick.ico;installer" --hidden-import pystray._win32 --hidden-import winrt.windows.applicationmodel.datatransfer.interop --hidden-import winrt.windows.storage src/vishare_quick/__main__.py
       - name: Package CLI (Linux)
         if: runner.os == 'Linux'
         run: pyinstaller --clean --noconfirm --distpath dist --workpath build installer/linux/vishare-quick.spec

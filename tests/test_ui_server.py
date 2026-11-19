@@ -16,7 +16,7 @@ class FakeService:
 
     def snapshot(self):
         return {
-            "version": "alpha_0.9",
+            "version": "alpha_0.10",
             "phase": self.phase,
             "active": self.phase == "advertising",
             "advertising": self.phase == "advertising",
@@ -73,11 +73,17 @@ class FakeSendService:
 
     def snapshot(self):
         return {
-            "version": "alpha_0.9",
+            "version": "alpha_0.10",
             "phase": self.phase,
             "active": False,
             "discovering": False,
             "device_name": "ViShare Quick",
+            "nearby_share": {
+                "label": "Windows Nearby Sharing",
+                "supported": False,
+                "available": False,
+                "reason": "Only available on Windows.",
+            },
             "files": [],
             "total_size": 0,
             "peers": [],
@@ -102,6 +108,10 @@ class FakeSendService:
 
     def start_send(self, peer_key=None):
         self.calls.append(("start", peer_key))
+        return True
+
+    def share_via_windows(self):
+        self.calls.append(("windows-share",))
         return True
 
     def resolve_pin(self, match):
@@ -183,7 +193,7 @@ class TestUiServer(unittest.TestCase):
         text = body.decode("utf-8")
         self.assertIn(self.server.token, text)
         self.assertNotIn("__VISHARE_TOKEN__", text)
-        self.assertIn("alpha_0.9", text)
+        self.assertIn("alpha_0.10", text)
 
     def test_state_requires_token_and_allows_loopback_hosts(self):
         status, _, _ = self.request("GET", "/api/state", token=False)
@@ -276,7 +286,7 @@ class TestUiServer(unittest.TestCase):
                 text = body.decode("utf-8")
                 self.assertIn(self.server.token, text)
                 self.assertNotIn("__VISHARE_TOKEN__", text)
-                self.assertIn("alpha_0.9", text)
+                self.assertIn("alpha_0.10", text)
 
     def test_path_traversal_is_not_served(self):
         for path in (
@@ -397,6 +407,7 @@ class TestSendUiServer(unittest.TestCase):
     def test_send_actions_are_dispatched(self):
         cases = (
             ("/api/send/discover", {}, ("discover",)),
+            ("/api/send/windows-share", {}, ("windows-share",)),
             ("/api/send/start", {"peer": "10.0.0.2:1234"}, ("start", "10.0.0.2:1234")),
             ("/api/send/pin", {"match": True}, ("pin", True)),
             ("/api/send/cancel", {}, ("cancel",)),

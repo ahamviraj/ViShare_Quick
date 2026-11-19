@@ -389,6 +389,10 @@ class UiRequestHandler(BaseHTTPRequestHandler):
             started = sender.start_discovery()
             self._reply_state(ok=started, status=200 if started else 409)
             return
+        if path == "/api/send/windows-share":
+            shared = sender.share_via_windows()
+            self._reply_state(ok=shared, status=200 if shared else 409)
+            return
         if path == "/api/send/start":
             peer_key = body.get("peer")
             if peer_key is not None and not isinstance(peer_key, str):

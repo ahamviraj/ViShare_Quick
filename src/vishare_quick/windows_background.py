@@ -83,6 +83,8 @@ def _kernel() -> Any:
             wintypes.DWORD,
         ]
         kernel32.GetConsoleProcessList.restype = wintypes.DWORD
+        kernel32.GetCurrentProcessId.argtypes = []
+        kernel32.GetCurrentProcessId.restype = wintypes.DWORD
         _kernel32 = kernel32
     return _kernel32
 
@@ -149,8 +151,65 @@ def _user() -> Any:
         ]
         user32.GetMessageW.restype = ctypes.c_int
         user32.PostQuitMessage.argtypes = [ctypes.c_int]
+        user32.EnumWindows.argtypes = [
+            ctypes.WINFUNCTYPE(
+                wintypes.BOOL, wintypes.HWND, wintypes.LPARAM
+            ),
+            wintypes.LPARAM,
+        ]
+        user32.EnumWindows.restype = wintypes.BOOL
+        user32.GetWindowThreadProcessId.argtypes = [
+            wintypes.HWND,
+            ctypes.POINTER(wintypes.DWORD),
+        ]
+        user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+        user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
+        user32.GetWindowTextLengthW.restype = ctypes.c_int
+        user32.GetWindowTextW.argtypes = [
+            wintypes.HWND,
+            wintypes.LPWSTR,
+            ctypes.c_int,
+        ]
+        user32.GetWindowTextW.restype = ctypes.c_int
         _user32 = user32
     return _user32
+
+
+def find_window(title: str = TRAY_TITLE) -> int | None:
+    """Return this process's top-level window with exactly ``title``."""
+    if os.name != "nt":
+        return None
+    try:
+        from ctypes import wintypes
+
+        kernel32 = _kernel()
+        user32 = _user()
+        callback_type = ctypes.WINFUNCTYPE(
+            wintypes.BOOL, wintypes.HWND, wintypes.LPARAM
+        )
+        pid = kernel32.GetCurrentProcessId()
+        found: list[int] = []
+
+        def inspect(hwnd: int, _lparam: int) -> bool:
+            owner = wintypes.DWORD()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+            if owner.value != pid:
+                return True
+            length = user32.GetWindowTextLengthW(hwnd)
+            if length <= 0:
+                return True
+            buffer = ctypes.create_unicode_buffer(length + 1)
+            user32.GetWindowTextW(hwnd, buffer, length + 1)
+            if buffer.value.strip() != title:
+                return True
+            found.append(int(hwnd))
+            return False
+
+        callback = callback_type(inspect)
+        user32.EnumWindows(callback, 0)
+        return found[0] if found else None
+    except Exception:  # noqa: BLE001 - optional Windows integration
+        return None
 
 
 def hide_console_if_owned() -> bool:

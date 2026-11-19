@@ -1,12 +1,14 @@
 # ViShare_Quick
 
-**Package:** `alpha_0.9` (research build)\
+**Package:** `alpha_0.10` (Windows build published under the `alpha_0.9` release label)\
 **Target:** Windows / Linux · Python 3.10+
 
 ## Download
 
-Prebuilt installers and portable packages are attached to the
-[`alpha_0.9` release](https://github.com/ahamviraj/ViShare_Quick/releases/tag/alpha_0.9):
+The latest published release label is
+[`alpha_0.9`](https://github.com/ahamviraj/ViShare_Quick/releases/tag/alpha_0.9).
+Its Windows assets are built from `alpha_0.10`; the release label remains `alpha_0.9`. Linux assets
+remain from the `alpha_0.9` build. Its prebuilt installers and portable packages are:
 
 - Windows x64 installer: `ViShare-Quick-Setup-alpha_0.9.exe`
 - Windows x64 portable: `vishare-quick.exe`
@@ -67,6 +69,25 @@ The command line remains available for scripted and diagnostic use, including bo
 inspection, the opt-in P256_SHA512 UKEY2 handshake, encrypted-frame inspection, paired-key probes,
 the consent-gated `--receive-files` receiver, and the `peers`/`send` Quick Share sender. The local
 interface also sends files through the **Send** page.
+
+## Highlights in `alpha_0.10`
+
+- **Windows Nearby Sharing handoff**: after staging files on the Send page, the Windows build shows
+  a **Windows Nearby Sharing** card. **Send via Windows** opens the system share sheet, where Nearby
+  Sharing can be selected as the destination.
+- **Availability is explicit**: the card reports whether Nearby Sharing is enabled in Windows
+  Settings and whether the app window is available. The button stays disabled with the reason when
+  the handoff cannot be used.
+- **Different protocols, no false claims**: this is a send-only Windows handoff. It does not discover
+  cross-network Google Quick Share devices and does not add a Windows receiver. LAN Quick Share
+  discovery, PIN confirmation, progress, and fail-closed cleanup are unchanged.
+- **No false success**: if the system share sheet does not open, the Send page reports the failure
+  instead of claiming that files were handed off. Launching the installed app directly is required
+  when another program started it as a child process.
+- **Verification**: 427 unit tests, including availability detection, share-session lifetime,
+  service handoff, and the loopback API. The Windows app-window handoff was exercised through the
+  real send API, and the frozen Windows build reported Nearby Sharing available and opened the
+  share sheet when launched directly by Explorer. The installer still needs release verification.
 
 ## Highlights in `alpha_0.9`
 
@@ -407,8 +428,11 @@ The encrypted-frame diagnostic and its limitations are described in
 - `alpha_0.7`: local **Send** page with browser file picker and drag/drop staging, nearby receiver list, explicit PIN confirmation, per-file progress, cancel, retry, failure routing, and fail-closed cleanup; sender device name follows Settings
 - `alpha_0.8`: native app window for the local interface, browser fallback and explicit `--browser`/headless modes, clean window-close shutdown, per-user Windows installer with searchable Start Menu entry, and a Debian/Ubuntu package with a searchable application-menu entry
 - `alpha_0.9`: Windows background mode with tray icon, global **Ctrl+Alt+V** shortcut, close-to-tray, single-instance foregrounding, sign-in autostart, and optional pinning help; Linux window-close behavior is unchanged
+- `alpha_0.10`: send-only Windows Nearby Sharing handoff from the Send page through the system share sheet, with explicit availability and failure reporting; Google Quick Share LAN discovery and sending remain unchanged
 - Future milestone: verify multi-file and text-only shares across more devices and display formats, including the browser sender on a real Android device
 - Later milestone: broader sender hardening
 
-Released as `alpha_0.9`. File reception and sending have been demonstrated on one trusted local
-network; this is not a claim of peer identity verification or broad interoperability.
+The latest published release label is `alpha_0.9`; its Windows assets contain the `alpha_0.10`
+build, while Linux assets remain `alpha_0.9`. File reception and sending have been demonstrated on
+one trusted local network; this is not a claim of peer identity verification or broad
+interoperability.
