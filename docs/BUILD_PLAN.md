@@ -10,6 +10,7 @@
 | Alpha 0.6 | Released | CLI sender: peer discovery, UKEY2 client role, explicit PIN gate, authenticated 512 KiB streaming, multi-file and chunked transfers, cancel, linger, and fail-closed cleanup |
 | Alpha 0.7 | Released | Local Send interface: browser and drag/drop staging, nearby receiver list, PIN gate, per-file progress, cancel, retry, and fail-closed cleanup |
 | Alpha 0.8 | Released | Native app window for the local interface, with `--browser` and headless modes plus a browser fallback; per-user Windows installer and Debian/Ubuntu package with searchable menu entries |
+| Alpha 0.9 | Released | Windows background mode: tray icon, global `Ctrl+Alt+V` shortcut, close-to-tray, single-instance foregrounding, sign-in autostart, and optional pinning help |
 | Future receiver milestone | Not started | Verified peer identity and broader device/file-format coverage |
 | Later sender milestone | Not started | Broader sender hardening |
 
@@ -45,6 +46,14 @@ Menu shortcut for Windows Search, and registers an uninstaller. The Linux `deb` 
 binary under `/usr/bin`, adds a desktop entry and icon for application-menu search, and uses the
 normal package-manager uninstall path. Release builds produce installers and portable executables
 for both platforms.
+
+`alpha_0.9` adds the Windows background lifecycle. The window can start hidden, closing it hides it
+to the notification area, and a global `Ctrl+Alt+V` shortcut or the tray **Open ViShare Quick** item
+brings it back. The tray **Quit ViShare Quick** item and **Stop interface** still shut down
+advertising and the local server. A named mutex forwards a second launch to the existing window. The
+Windows installer enables sign-in autostart by default and offers to open the app list because
+Windows does not permit installers to pin apps to Start or the taskbar. The option is
+`vishare ui --background`, and it remains Windows-only; Linux close-to-exit behavior is unchanged.
 
 The protocol implementation still does not verify peer identity, and chunked (multi-frame) BYTES
 payloads and text-only shares are not reassembled by the receiver into files.

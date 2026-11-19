@@ -1,4 +1,4 @@
-"""Command-line interface for ViShare_Quick alpha_0.8."""
+"""Command-line interface for ViShare_Quick alpha_0.9."""
 
 import argparse
 import sys
@@ -138,6 +138,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="run the local server without opening an app window or browser",
     )
+    display.add_argument(
+        "--background",
+        action="store_true",
+        help="start hidden in the Windows notification area with a tray icon",
+    )
     ui.add_argument(
         "--download-dir",
         metavar="DIR",
@@ -272,6 +277,8 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("--port must be between 0 and 65535")
         if not args.name.strip():
             parser.error("--name cannot be empty")
+        if args.background and sys.platform != "win32":
+            parser.error("--background is only supported on Windows")
         try:
             from vishare_quick.ui_server import run_ui
 
@@ -281,6 +288,7 @@ def main(argv: list[str] | None = None) -> int:
                 device_name=args.name.strip(),
                 open_browser=args.browser,
                 use_window=not (args.browser or args.no_browser),
+                background=args.background,
             )
         except (RuntimeError, ValueError, OSError) as exc:
             print(f"Interface failed to start: {exc}", file=sys.stderr)

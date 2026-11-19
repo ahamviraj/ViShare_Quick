@@ -1,21 +1,24 @@
 # ViShare_Quick
 
-**Package:** `alpha_0.8` (research build)\
+**Package:** `alpha_0.9` (research build)\
 **Target:** Windows / Linux · Python 3.10+
 
 ## Download
 
 Prebuilt installers and portable packages are attached to the
-[`alpha_0.8` release](https://github.com/ahamviraj/ViShare_Quick/releases/tag/alpha_0.8):
+[`alpha_0.9` release](https://github.com/ahamviraj/ViShare_Quick/releases/tag/alpha_0.9):
 
-- Windows x64 installer: `ViShare-Quick-Setup-alpha_0.8.exe`
+- Windows x64 installer: `ViShare-Quick-Setup-alpha_0.9.exe`
 - Windows x64 portable: `vishare-quick.exe`
-- Linux x64 installer: `vishare-quick_0.8.0_amd64.deb`
+- Linux x64 installer: `vishare-quick_0.9.0_amd64.deb`
 - Linux x64 portable: `vishare-quick` (x86_64, glibc 2.35 or newer)
 
 The Windows installer installs per-user without an administrator prompt, adds a searchable Start
 Menu entry named **ViShare Quick**, and registers an uninstaller under **Settings → Apps**. The
-portable executable remains available for users who do not want an installation.
+installer starts the app in the background at sign-in by default and can open the app list so you
+can pin the app manually. Windows does not allow installers to pin apps to Start or the taskbar, so
+pinning remains a user action. The portable executable remains available for users who do not want
+an installation.
 
 The Linux `deb` package installs `/usr/bin/vishare-quick`, adds a searchable application-menu entry
 named **ViShare Quick**, and registers normal package-manager uninstall metadata. Its dependencies
@@ -30,7 +33,7 @@ The command-line commands below remain available for scripted and diagnostic use
 Linux (Debian/Ubuntu):
 
 ```bash
-sudo apt install ./vishare-quick_0.8.0_amd64.deb
+sudo apt install ./vishare-quick_0.9.0_amd64.deb
 vishare-quick ui
 vishare-quick --version
 ```
@@ -64,6 +67,22 @@ The command line remains available for scripted and diagnostic use, including bo
 inspection, the opt-in P256_SHA512 UKEY2 handshake, encrypted-frame inspection, paired-key probes,
 the consent-gated `--receive-files` receiver, and the `peers`/`send` Quick Share sender. The local
 interface also sends files through the **Send** page.
+
+## Highlights in `alpha_0.9`
+
+- **Windows background mode**: the installed app starts hidden at sign-in, keeps running in the
+  notification area, and reopens from the tray icon or with **Ctrl+Alt+V**.
+- **Close to tray**: closing the Windows window hides it and keeps the local server available;
+  **Quit ViShare Quick** in the tray menu or **Settings → Stop interface** shuts it down completely.
+- **Single instance**: launching the app again brings the existing window forward instead of
+  starting a second server.
+- **Autostart and pinning help**: the Windows installer enables background startup at sign-in by
+  default and offers to open the app list for manual **Pin to Start** or **Pin to taskbar**.
+  **Ctrl+Alt+V** is a global shortcut while the app is running.
+- **Explicit background launch**: `vishare ui --background` starts the Windows app hidden. The
+  option is Windows-only; Linux keeps its existing close-to-exit behavior.
+- **Verification**: 411 unit tests plus Windows tray, hotkey, close-to-tray, second-launch, and
+  packaged-build checks.
 
 ## Highlights in `alpha_0.8`
 
@@ -147,6 +166,14 @@ The app window uses Edge WebView2 on Windows; current Windows 10/11 installation
 it already. Linux in-app windows require GTK 3 and WebKitGTK. If the webview backend is unavailable,
 the default launch falls back to the browser instead of failing.
 
+On Windows, every UI launch keeps a tray icon and the **Ctrl+Alt+V** global shortcut available.
+Closing the window hides it instead of stopping the interface; choose **Open ViShare Quick** or press
+**Ctrl+Alt+V** to bring it back. Choose **Quit ViShare Quick** from the tray menu or **Settings →
+Stop interface** to stop advertising and the local server. `vishare ui --background` starts hidden,
+which is what the installer's sign-in entry uses. The Windows installer cannot pin the app itself;
+its optional final task opens the app list so you can right-click **ViShare Quick** and choose
+**Pin to Start** or **Pin to taskbar**.
+
 Pages:
 
 - **Home**: the visible device name, current receiver state, Receive files, Send files, and Settings.
@@ -167,9 +194,10 @@ Pages:
   interface**.
 
 The activity panel is status text only; it never shows peer payload IDs, keys, or file contents.
-Closing the app window stops advertising and shuts down the local server. In browser or headless
-mode, closing the tab does not stop advertising: use **Settings → Stop interface** or press Ctrl+C
-in the terminal that launched the app.
+On Linux, closing the app window stops advertising and shuts down the local server. On Windows,
+closing the window hides it to the tray; quit from the tray menu to stop the server. In browser or
+headless mode, closing the tab does not stop advertising: use **Settings → Stop interface** or press
+Ctrl+C in the terminal that launched the app.
 
 Useful options:
 
@@ -177,7 +205,11 @@ Useful options:
 python -m vishare_quick ui --download-dir D:\Incoming
 python -m vishare_quick ui --browser
 python -m vishare_quick ui --name "Desk PC" --port 8765 --no-browser
+python -m vishare_quick ui --background
 ```
+
+`--background` is available on Windows only. It starts the window hidden and keeps the tray icon and
+global shortcut active.
 
 ## Commands
 
@@ -189,6 +221,7 @@ python -m vishare_quick ui
 python -m vishare_quick ui --download-dir D:\Incoming
 python -m vishare_quick ui --browser
 python -m vishare_quick ui --no-browser --port 8765
+python -m vishare_quick ui --background
 python -m vishare_quick advertise --name "ViShare Quick" --seconds 120
 python -m vishare_quick advertise --name "ViShare Quick" --seconds 120 --inspect-frames
 python -m vishare_quick advertise --name "ViShare Quick" --seconds 120 --ukey2-handshake
@@ -373,8 +406,9 @@ The encrypted-frame diagnostic and its limitations are described in
 - `alpha_0.6`: CLI Quick Share sender (`peers`, `send`, `--handshake-only`), UKEY2 client role, sender key schedule, mDNS peer discovery, explicit PIN gate, 512 KiB authenticated streaming, keep-alives, progress, cancel, linger, and fail-closed cleanup; verified single-file, multi-file, chunked, and spaced-name transfers on one Android 14 XPad
 - `alpha_0.7`: local **Send** page with browser file picker and drag/drop staging, nearby receiver list, explicit PIN confirmation, per-file progress, cancel, retry, failure routing, and fail-closed cleanup; sender device name follows Settings
 - `alpha_0.8`: native app window for the local interface, browser fallback and explicit `--browser`/headless modes, clean window-close shutdown, per-user Windows installer with searchable Start Menu entry, and a Debian/Ubuntu package with a searchable application-menu entry
+- `alpha_0.9`: Windows background mode with tray icon, global **Ctrl+Alt+V** shortcut, close-to-tray, single-instance foregrounding, sign-in autostart, and optional pinning help; Linux window-close behavior is unchanged
 - Future milestone: verify multi-file and text-only shares across more devices and display formats, including the browser sender on a real Android device
 - Later milestone: broader sender hardening
 
-Released as `alpha_0.8`. File reception and sending have been demonstrated on one trusted local
+Released as `alpha_0.9`. File reception and sending have been demonstrated on one trusted local
 network; this is not a claim of peer identity verification or broad interoperability.

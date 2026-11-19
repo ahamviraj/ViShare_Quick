@@ -10,12 +10,12 @@ from vishare_quick.diagnostics import run_diagnostics
 
 class TestViShareQuickCLI(unittest.TestCase):
     def test_version(self):
-        self.assertEqual(__version__, "alpha_0.8")
+        self.assertEqual(__version__, "alpha_0.9")
 
     def test_diagnostics_include_required_fields(self):
         diagnostics = dict(run_diagnostics())
         self.assertEqual(diagnostics["Application"], "ViShare_Quick")
-        self.assertEqual(diagnostics["Version"], "alpha_0.8")
+        self.assertEqual(diagnostics["Version"], "alpha_0.9")
         self.assertIn("Python version", diagnostics)
         self.assertIn("OS family", diagnostics)
 
@@ -76,6 +76,7 @@ class TestViShareQuickCLI(unittest.TestCase):
             device_name="Desk PC",
             open_browser=False,
             use_window=False,
+            background=False,
         )
 
     @patch("vishare_quick.ui_server.run_ui")
@@ -89,6 +90,7 @@ class TestViShareQuickCLI(unittest.TestCase):
             device_name="ViShare Quick",
             open_browser=False,
             use_window=True,
+            background=False,
         )
 
     @patch("vishare_quick.ui_server.run_ui")
@@ -102,7 +104,32 @@ class TestViShareQuickCLI(unittest.TestCase):
             device_name="ViShare Quick",
             open_browser=True,
             use_window=False,
+            background=False,
         )
+
+    @patch("vishare_quick.ui_server.run_ui")
+    def test_ui_command_can_start_in_the_windows_background(self, mocked_run_ui):
+        mocked_run_ui.return_value = 0
+        with patch("vishare_quick.cli.sys.platform", "win32"):
+            result = main(["ui", "--background"])
+        self.assertEqual(result, 0)
+        mocked_run_ui.assert_called_once_with(
+            port=0,
+            download_dir=None,
+            device_name="ViShare Quick",
+            open_browser=False,
+            use_window=True,
+            background=True,
+        )
+
+    def test_ui_background_is_rejected_off_windows(self):
+        error = StringIO()
+        with patch("vishare_quick.cli.sys.platform", "linux"):
+            with redirect_stderr(error):
+                with self.assertRaises(SystemExit) as raised:
+                    main(["ui", "--background"])
+        self.assertEqual(raised.exception.code, 2)
+        self.assertIn("only supported on Windows", error.getvalue())
 
     @patch("vishare_quick.ui_server.run_ui", side_effect=OSError("port busy"))
     def test_ui_start_failure_returns_two(self, mocked_run_ui):

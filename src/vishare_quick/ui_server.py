@@ -526,8 +526,14 @@ def run_ui(
     device_name: str = "ViShare Quick",
     open_browser: bool = False,
     use_window: bool = True,
+    background: bool = False,
 ) -> int:
     """Serve the interface in an app window, browser, or headless mode."""
+    background = background and use_window and not open_browser
+    if background:
+        from vishare_quick.windows_background import hide_console_if_owned
+
+        hide_console_if_owned()
     service = ReceiveService(
         download_dir if download_dir is not None else default_download_dir(),
         device_name,
@@ -550,7 +556,12 @@ def run_ui(
             from vishare_quick.desktop import WindowUnavailable, run_app_window
 
             try:
-                run_app_window(server, url)
+                run_app_window(
+                    server,
+                    url,
+                    start_hidden=background,
+                    enable_background=sys.platform == "win32",
+                )
                 return 0
             except WindowUnavailable as exc:
                 print(f"In-app window unavailable: {exc}", flush=True)
@@ -595,6 +606,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="run the local server without opening an app window or browser",
     )
+    display.add_argument(
+        "--background",
+        action="store_true",
+        help="start hidden in the Windows notification area",
+    )
     parser.add_argument(
         "--download-dir", metavar="DIR", help="destination directory for received files"
     )
@@ -604,6 +620,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--port must be between 0 and 65535")
     if not args.name.strip():
         parser.error("--name cannot be empty")
+    if args.background and sys.platform != "win32":
+        parser.error("--background is only supported on Windows")
     try:
         return run_ui(
             port=args.port,
@@ -611,6 +629,7 @@ def main(argv: list[str] | None = None) -> int:
             device_name=args.name.strip(),
             open_browser=args.browser,
             use_window=not (args.browser or args.no_browser),
+            background=args.background,
         )
     except (RuntimeError, ValueError, OSError) as exc:
         print(f"Interface failed to start: {exc}", file=sys.stderr)

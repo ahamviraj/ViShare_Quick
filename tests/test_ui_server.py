@@ -16,7 +16,7 @@ class FakeService:
 
     def snapshot(self):
         return {
-            "version": "alpha_0.8",
+            "version": "alpha_0.9",
             "phase": self.phase,
             "active": self.phase == "advertising",
             "advertising": self.phase == "advertising",
@@ -73,7 +73,7 @@ class FakeSendService:
 
     def snapshot(self):
         return {
-            "version": "alpha_0.8",
+            "version": "alpha_0.9",
             "phase": self.phase,
             "active": False,
             "discovering": False,
@@ -183,7 +183,7 @@ class TestUiServer(unittest.TestCase):
         text = body.decode("utf-8")
         self.assertIn(self.server.token, text)
         self.assertNotIn("__VISHARE_TOKEN__", text)
-        self.assertIn("alpha_0.8", text)
+        self.assertIn("alpha_0.9", text)
 
     def test_state_requires_token_and_allows_loopback_hosts(self):
         status, _, _ = self.request("GET", "/api/state", token=False)
@@ -276,7 +276,7 @@ class TestUiServer(unittest.TestCase):
                 text = body.decode("utf-8")
                 self.assertIn(self.server.token, text)
                 self.assertNotIn("__VISHARE_TOKEN__", text)
-                self.assertIn("alpha_0.8", text)
+                self.assertIn("alpha_0.9", text)
 
     def test_path_traversal_is_not_served(self):
         for path in (
@@ -469,6 +469,20 @@ class TestRunUiLifecycle(unittest.TestCase):
         self.assertEqual(window.call_args.args[1], "http://127.0.0.1:12345/")
         self.assertTrue(FakeRunServer.last.shutdown_called)
         self.assertTrue(FakeRunServer.last.closed)
+
+    @patch("vishare_quick.ui_server.create_server", FakeRunServer)
+    @patch("vishare_quick.ui_server.SendService", FakeRunSendService)
+    @patch("vishare_quick.ui_server.ReceiveService", FakeRunReceiveService)
+    @patch("vishare_quick.desktop.run_app_window")
+    @patch("vishare_quick.windows_background.hide_console_if_owned")
+    def test_background_starts_the_window_hidden(self, hide_console, window):
+        with patch("vishare_quick.ui_server.sys.platform", "win32"):
+            result = run_ui(download_dir="C:/Downloads", background=True)
+
+        self.assertEqual(result, 0)
+        hide_console.assert_called_once_with()
+        self.assertTrue(window.call_args.kwargs["start_hidden"])
+        self.assertTrue(window.call_args.kwargs["enable_background"])
 
     @patch("vishare_quick.ui_server.create_server", FakeRunServer)
     @patch("vishare_quick.ui_server.SendService", FakeRunSendService)

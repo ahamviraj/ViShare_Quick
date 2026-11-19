@@ -1,9 +1,9 @@
 #define AppName "ViShare Quick"
 #ifndef AppVersion
-  #define AppVersion "alpha_0.8"
+  #define AppVersion "alpha_0.9"
 #endif
 #ifndef VersionInfoVersion
-  #define VersionInfoVersion "0.8.0.0"
+  #define VersionInfoVersion "0.9.0.0"
 #endif
 #ifndef SourceExe
   #define SourceExe "..\dist\vishare-quick.exe"
@@ -45,7 +45,9 @@ RestartApplications=no
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
+Name: "autostart"; Description: "Start {#AppName} in the background when I sign in"; GroupDescription: "Startup:"; Flags: checkedonce
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
+Name: "pinhelp"; Description: "Open the app list after installation so I can pin {#AppName}"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
 
 [Files]
 Source: "{#SourceExe}"; DestDir: "{app}"; Flags: ignoreversion
@@ -58,6 +60,15 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\vishare-quick.exe"; WorkingDi
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\vishare-quick.exe"; ValueType: string; ValueName: ""; ValueData: "{app}\vishare-quick.exe"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\vishare-quick.exe"; ValueType: string; ValueName: "Path"; ValueData: "{app}"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#AppName}"; ValueData: """{app}\vishare-quick.exe"" ui --background"; Flags: uninsdeletevalue; Tasks: autostart
 
 [Run]
 Filename: "{app}\vishare-quick.exe"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent
+Filename: "{sys}\explorer.exe"; Parameters: "shell:AppsFolder"; Description: "Open the app list to pin {#AppName}"; Flags: postinstall nowait skipifsilent; Tasks: pinhelp
+
+[Code]
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if (CurStep = ssPostInstall) and (not WizardIsTaskSelected('autostart')) then
+    RegDeleteValue(HKEY_CURRENT_USER, 'Software\Microsoft\Windows\CurrentVersion\Run', '{#AppName}');
+end;
