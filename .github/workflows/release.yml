@@ -64,8 +64,9 @@ jobs:
         shell: pwsh
         run: |
           $version = python -c "import vishare_quick; print(vishare_quick.__version__)"
-          if ($version -match '(\d+)\.(\d+)') {
-            $numericVersion = "$($Matches[1]).$($Matches[2]).0.0"
+          if ($version -match '(\d+)\.(\d+)(?:\.(\d+))?') {
+            $patch = if ($Matches[3]) { $Matches[3] } else { "0" }
+            $numericVersion = "$($Matches[1]).$($Matches[2]).$patch.0"
           } else {
             $numericVersion = "0.0.0.0"
           }
@@ -80,7 +81,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           version=$(python -c "import vishare_quick; print(vishare_quick.__version__)")
-          deb_version="${version#alpha_}"
+          deb_version=$(printf '%s' "$version" | sed -E 's/^(alpha|beta|stable)_//')
           case "$deb_version" in
             *.*.*) ;;
             *.*) deb_version="$deb_version.0" ;;

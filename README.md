@@ -1,17 +1,17 @@
 # ViShare_Quick
 
-**Package:** `alpha_0.10`\
+**Package:** `beta_0.9.1`\
 **Target:** Windows / Linux · Python 3.10+
 
 ## Download
 
 The latest published release is
-[`alpha_0.10`](https://github.com/ahamviraj/ViShare_Quick/releases/tag/alpha_0.10).
+[`beta_0.9.1`](https://github.com/ahamviraj/ViShare_Quick/releases/tag/beta_0.9.1).
 Its prebuilt installers and portable packages are:
 
-- Windows x64 installer: `ViShare-Quick-Setup-alpha_0.10.exe`
+- Windows x64 installer: `ViShare-Quick-Setup-beta_0.9.1.exe`
 - Windows x64 portable: `vishare-quick.exe`
-- Linux x64 installer: `vishare-quick_0.10.0_amd64.deb`
+- Linux x64 installer: `vishare-quick_0.9.1_amd64.deb`
 - Linux x64 portable: `vishare-quick` (x86_64, glibc 2.35 or newer)
 
 The Windows installer installs per-user without an administrator prompt, adds a searchable Start
@@ -69,7 +69,7 @@ inspection, the opt-in P256_SHA512 UKEY2 handshake, encrypted-frame inspection, 
 the consent-gated `--receive-files` receiver, and the `peers`/`send` Quick Share sender. The local
 interface also sends files through the **Send** page.
 
-## Highlights in `alpha_0.10`
+## Highlights in `beta_0.9.1`
 
 - **Windows Nearby Sharing handoff**: after staging files on the Send page, the Windows build shows
   a **Windows Nearby Sharing** card. **Send via Windows** opens the system share sheet, where Nearby
@@ -427,10 +427,10 @@ The encrypted-frame diagnostic and its limitations are described in
 - `alpha_0.7`: local **Send** page with browser file picker and drag/drop staging, nearby receiver list, explicit PIN confirmation, per-file progress, cancel, retry, failure routing, and fail-closed cleanup; sender device name follows Settings
 - `alpha_0.8`: native app window for the local interface, browser fallback and explicit `--browser`/headless modes, clean window-close shutdown, per-user Windows installer with searchable Start Menu entry, and a Debian/Ubuntu package with a searchable application-menu entry
 - `alpha_0.9`: Windows background mode with tray icon, global **Ctrl+Alt+V** shortcut, close-to-tray, single-instance foregrounding, sign-in autostart, and optional pinning help; Linux window-close behavior is unchanged
-- `alpha_0.10`: send-only Windows Nearby Sharing handoff from the Send page through the system share sheet, with explicit availability and failure reporting; Google Quick Share LAN discovery and sending remain unchanged
+- `beta_0.9.1`: send-only Windows Nearby Sharing handoff from the Send page through the system share sheet, with explicit availability and failure reporting; Google Quick Share LAN discovery and sending remain unchanged
 - Future milestone: verify multi-file and text-only shares across more devices and display formats, including the browser sender on a real Android device
 - Later milestone: broader sender hardening
 
-The latest published release is `alpha_0.10`. File reception and sending have been demonstrated on
+The latest published release is `beta_0.9.1`. File reception and sending have been demonstrated on
 one trusted local network; this is not a claim of peer identity verification or broad
 interoperability.

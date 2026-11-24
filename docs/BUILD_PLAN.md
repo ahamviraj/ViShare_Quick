@@ -11,7 +11,7 @@
 | Alpha 0.7 | Released | Local Send interface: browser and drag/drop staging, nearby receiver list, PIN gate, per-file progress, cancel, retry, and fail-closed cleanup |
 | Alpha 0.8 | Released | Native app window for the local interface, with `--browser` and headless modes plus a browser fallback; per-user Windows installer and Debian/Ubuntu package with searchable menu entries |
 | Alpha 0.9 | Released | Windows background mode: tray icon, global `Ctrl+Alt+V` shortcut, close-to-tray, single-instance foregrounding, sign-in autostart, and optional pinning help |
-| Alpha 0.10 | Released | Send-only Windows Nearby Sharing handoff through the system share sheet, with explicit availability and failure reporting |
+| Beta 0.9.1 | Released | Send-only Windows Nearby Sharing handoff through the system share sheet, with explicit availability and failure reporting |
 | Future receiver milestone | Not started | Verified peer identity and broader device/file-format coverage |
 | Later sender milestone | Not started | Broader sender hardening |
 
@@ -56,7 +56,7 @@ Windows installer enables sign-in autostart by default and offers to open the ap
 Windows does not permit installers to pin apps to Start or the taskbar. The option is
 `vishare ui --background`, and it remains Windows-only; Linux close-to-exit behavior is unchanged.
 
-`alpha_0.10` adds a send-only handoff from the Send page to the Windows system share sheet. The
+`beta_0.9.1` adds a send-only handoff from the Send page to the Windows system share sheet. The
 staged files are exposed as WinRT storage items, and the user chooses **Nearby Sharing** or another
 destination in the Windows UI. The Send page reports whether Nearby Sharing is enabled in Windows
 Settings and whether the app window is available, and it fails rather than reporting success if the
